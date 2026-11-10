@@ -20,11 +20,18 @@ Check mode parses the produced files and validates geometry/XML only.
 from __future__ import annotations
 
 import argparse
+import json
 import pathlib
 import sys
 import xml.etree.ElementTree as ET
 
-OUT = pathlib.Path(__file__).resolve().parent.parent / "assets"
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+OUT = ROOT / "assets"
+META = json.loads((ROOT / "versions.json").read_text(encoding="utf-8"))
+
+VERSION = META["release"]["version"]
+MODULES = {m["name"]: m for m in META["modules"]}
+KT = META["evidence"]["ktramp"]
 
 # --- palette ---------------------------------------------------------------
 BG0 = "#070b16"
@@ -180,14 +187,22 @@ def banner() -> None:
 
     # version chip
     s.rect(72, 352, 92, 26, 13, fill="none", stroke=VIOLET, sw=1.2)
-    s.txt(118, 370, "v1.0.3", 12, VIOLET, "700", anchor="middle", mono=True)
+    s.txt(118, 370, "v" + VERSION, 12, VIOLET, "700", anchor="middle", mono=True)
 
     # right: stacked module cards
     cards = [
-        ("kbootstrap", "CFI bridge + payload bus", GREEN, "v1.0.0"),
-        ("kpatch", "live text patch / restore", GREEN, "v1.0.2"),
-        ("ktramp", "full-function trampoline", GREEN, "v1.0.3"),
-        ("mglru_probe", "reclaim Stage A/B", AMBER, "v1.0.2"),
+        ("kbootstrap", "CFI bridge + payload bus",
+         GREEN if MODULES["kbootstrap"]["status"].startswith("stable") else AMBER,
+         "v" + MODULES["kbootstrap"]["version"]),
+        ("kpatch", "live text patch / restore",
+         GREEN if MODULES["kpatch"]["status"] == "probe" else AMBER,
+         "v" + MODULES["kpatch"]["version"]),
+        ("ktramp", "full-function trampoline",
+         GREEN if MODULES["ktramp"]["status"] == "probe" else AMBER,
+         "v" + MODULES["ktramp"]["version"]),
+        ("mglru_probe", "reclaim Stage A/B",
+         AMBER if MODULES["mglru_probe"]["status"] == "experimental" else GREEN,
+         "v" + MODULES["mglru_probe"]["version"]),
         ("7.4 backports", "planned library growth", DIM, "roadmap"),
     ]
     bx, by = 880, 62
@@ -371,7 +386,7 @@ def evidence() -> None:
         ("CFI bridge", "non-LTO module accepted by the vendor CFI runtime"),
         ("Symbols", "get_scan_count + patcher resolved via kprobe"),
         ("Trampoline", "7 prologue instructions copied, branch back"),
-        ("Policy", "page-cache scans suppressed: 7032 -> 0"),
+        ("Policy", "wrapper entered by real reclaim: " + str(KT["calls"]) + " calls"),
         ("Rollback", "original entry restored, no rmmod needed"),
     ]
     for i, (k, v) in enumerate(notes):
@@ -380,7 +395,7 @@ def evidence() -> None:
         s.txt(910, y, k, 13, TEXT, "700")
         s.txt(910, y + 19, v, 11.5, MUTED)
 
-    s.txt(64, 486, "Log: $PREFIX/tmp/ktramp2-1794331930/q.log · replayed by tests/qemu_probe_gate.sh", 11.5, DIM, mono=True)
+    s.txt(64, 486, "Log: " + KT["log"] + " · replayed by tests/qemu_ktramp_gate.sh", 11.5, DIM, mono=True)
     s.save("evidence.svg")
 
 
@@ -393,16 +408,15 @@ def library() -> None:
     s.txt(64, 100, "Four modules, one entry, growing", 28, TEXT, "800")
     s.txt(64, 128, "Every module is built from this tree by tools/adapt_kernel.sh and gated in QEMU.", 13, MUTED)
 
-    mods = [
-        ("kbootstrap", "v1.0.0", GREEN, "stable",
-         "CFI bridge, kallsyms\nresolution, raw payload\nexecution, /proc surface."),
-        ("kpatch", "v1.0.2", GREEN, "probe",
-         "Live text patch with\nsave + verify + restore\nof a syscall body."),
-        ("ktramp", "v1.0.3", GREEN, "probe",
-         "Copied-prologue\ntrampoline replaces a\nwhole function body."),
-        ("mglru_probe", "v1.0.2", AMBER, "experimental",
-         "Reclaim-path kprobes,\nscan policy modes and a\ngeneration side table."),
-    ]
+    bodies = {
+        "kbootstrap": "CFI bridge, kallsyms\nresolution, raw payload\nexecution, /proc surface.",
+        "kpatch": "Live text patch with\nsave + verify + restore\nof a syscall body.",
+        "ktramp": "Copied-prologue\ntrampoline replaces a\nwhole function body.",
+        "mglru_probe": "Reclaim-path kprobes,\nscan policy modes and a\ngeneration side table.",
+    }
+    colors = {"stable probe": GREEN, "probe": GREEN, "experimental": AMBER}
+    mods = [(m["name"], "v" + m["version"], colors.get(m["status"], DIM), m["status"],
+             bodies[m["name"]]) for m in META["modules"]]
     for i, (name, ver, color, state, body) in enumerate(mods):
         x = 64 + i * 296
         s.rect(x, 170, 272, 230, 16, fill="url(#cardg)")

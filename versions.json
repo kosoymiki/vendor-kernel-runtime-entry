@@ -1,0 +1,55 @@
+{
+  "_comment": "Single source of truth for release and module metadata. tools/make_assets.py renders it into the SVGs; tools/check_versions.py enforces that nothing drifts. Bump here first, then run the checklist in docs/RELEASE.md.",
+  "release": {
+    "version": "1.0.3",
+    "versionCode": 4,
+    "date": "2026-11-10"
+  },
+  "modules": [
+    {
+      "name": "kbootstrap",
+      "version": "1.0.0",
+      "status": "stable probe",
+      "sha256": "065f520b1b562f55eef48a138a12d4df3c18d51357bcbacb39b46d1e9a33c593",
+      "gate": "tests/qemu_payload_gate.sh",
+      "note": "CFI bridge, kallsyms resolution, raw payload, /proc surface",
+      "dir": "kernel"
+    },
+    {
+      "name": "kpatch",
+      "version": "1.0.2",
+      "status": "probe",
+      "sha256": "c4f9a319feb6da9d8989bbdb15903bcb6ccce4c361c1fcd1edfc237dfe5ddf11",
+      "gate": "tests/qemu_probe_gate.sh",
+      "note": "save, patch, verify, restore of a syscall body",
+      "dir": "modules/kpatch"
+    },
+    {
+      "name": "ktramp",
+      "version": "1.0.3",
+      "status": "probe",
+      "sha256": "bbfb599a17db566dae1eb664dbafba5de1f5568bd08ac7363ca1ceefc35b55e3",
+      "gate": "tests/qemu_ktramp_gate.sh",
+      "note": "copied-prologue trampoline over a whole function",
+      "dir": "modules/ktramp"
+    },
+    {
+      "name": "mglru_probe",
+      "version": "1.0.2",
+      "status": "experimental",
+      "sha256": "245b09fe5c64c0efaad9ad71d848b80608474add774a338c5ee4077b820ad719",
+      "gate": "tests/qemu_probe_gate.sh",
+      "note": "reclaim-path kprobes, scan policy modes, generation side table",
+      "dir": "modules/mglru"
+    }
+  ],
+  "evidence": {
+    "ktramp": {
+      "calls": 113,
+      "pgscan_file": 6084,
+      "pgscan_kswapd": 5917,
+      "pgscan_direct": 167,
+      "log": "$PREFIX/tmp/ktramp-gate.*/serial.log"
+    }
+  }
+}

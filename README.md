@@ -267,6 +267,7 @@ explicit gap list; the 5.10 → 7.4 delta is measured in
 | Methodology | [METHODOLOGY](docs/METHODOLOGY.md) | — | how a target is analysed and what is gated |
 | Security | [SECURITY](docs/SECURITY.md) | — | threat model, trust boundary, failure modes |
 | 7.4 backport map | [BACKPORT-7.4](docs/BACKPORT-7.4.md) | — | measured delta, syscalls, feature order |
+| Release procedure | [RELEASE](docs/RELEASE.md) | — | version bump across languages, docs and graphics |
 
 ## Security model and limits
 
@@ -312,8 +313,10 @@ the generator, not the asset.
   and offsets that were actually observed — no guesses.
 - Probes must say what they are: `probe`, `experimental` or `stable probe`.
   "Backported" is reserved for parity that has been measured.
-- Run `bash tests/static_checks.sh` and `python3 tools/make_assets.py --check`
-  before opening a pull request.
+- Run `python3 tools/check_versions.py && bash tests/static_checks.sh` before
+  opening a pull request. A version bump that skips a language, a table or a
+  generated asset fails that gate by design — see
+  [`docs/RELEASE.md`](docs/RELEASE.md).
 
 ## Research ledger
 

@@ -13,8 +13,9 @@ for f in "$R"/tools/*.py "$R"/tests/*.py; do [ -f "$f" ] && python3 -m py_compil
 ! grep -RIn --exclude-dir=.git --exclude=static_checks.sh -E "8843388838|TELEGRAM_BOT_TOKEN|ghp_[A-Za-z0-9]{20,}" \
     "$R" || { echo "FAIL secret-like token"; exit 1; }
 
-# generated infographics must be valid and reproducible from tools/make_assets.py
-python3 "$R/tools/make_assets.py" --check >/dev/null || { echo "FAIL assets"; exit 1; }
+# version/documentation consistency: versions.json -> module.prop, both READMEs,
+# docs pairs, and byte-identical regenerated assets (docs/RELEASE.md)
+python3 "$R/tools/check_versions.py" || { echo "FAIL version consistency"; exit 1; }
 
 # every README states that the library is under active development
 missing=0

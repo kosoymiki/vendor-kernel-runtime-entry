@@ -269,6 +269,7 @@ QEMU и явным списком пробелов; дельта 5.10 → 7.4 и
 | Методология | — | [METHODOLOGY](docs/METHODOLOGY.md) | как анализируется цель и что гейтится |
 | Безопасность | — | [SECURITY](docs/SECURITY.md) | модель угроз, граница доверия, режимы отказа |
 | Карта бэкпорта 7.4 | — | [BACKPORT-7.4](docs/BACKPORT-7.4.md) | измеренная дельта, syscalls, порядок фич |
+| Процедура релиза | — | [RELEASE](docs/RELEASE.md) | бамп версии по языкам, докам и графике |
 
 ## Модель безопасности и границы
 
@@ -315,8 +316,9 @@ docs/        адаптация, матрица входа, reclaim, MGLRU, CVE,
   наблюдёнными входами и оффсетами, без догадок.
 - Probe обязан называться probe: `probe`, `experimental` или `stable probe`.
   «Backported» зарезервировано для измеренной parity.
-- Перед pull request: `bash tests/static_checks.sh` и
-  `python3 tools/make_assets.py --check`.
+- Перед pull request: `python3 tools/check_versions.py && bash tests/static_checks.sh`.
+  Бамп версии, который пропустил язык, таблицу или сгенерированный ассет,
+  падает на этом гейте by design — см. [`docs/RELEASE.md`](docs/RELEASE.md).
 
 ## Источники ресерча
 
