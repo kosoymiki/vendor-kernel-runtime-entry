@@ -1,5 +1,9 @@
 # Kernel delta tooling
 
+> 🚧 **Active development** — part of a library that grows regularly. New
+> modules, stages and target profiles land as they pass their QEMU gates;
+> interfaces and evidence are updated together.
+
 Reproduce the file-to-file and feature delta between two kernel trees.
 
 ```sh

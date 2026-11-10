@@ -1,5 +1,9 @@
 # kpatch — text-patch probe
 
+> 🚧 **Active development** — part of a library that grows regularly. New
+> modules, stages and target profiles land as they pass their QEMU gates;
+> interfaces and evidence are updated together.
+
 Proof that the entry can replace a live kernel function and restore it:
 
 - resolve `aarch64_insn_patch_text_nosync`, `__arm64_sys_getpid`, kallsyms and

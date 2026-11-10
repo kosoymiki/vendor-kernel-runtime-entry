@@ -9,6 +9,7 @@ stock Image; это не обещание для любого ядра.
 | LKM + CFI bridge | `MODULES=y`, unsigned | **доказано** | код модуля, init/exit, callbacks | panic probe + payload `/proc/kbootstrap`, payload_result=42 |
 | kprobe / kretprobe | `KPROBES=y` | **доказано** | резолв неэкспортируемых, наблюдение/правка `get_scan_count` | `mglru_probe` 6/6, hits 426; kretprobe changed=305 |
 | text patch | `aarch64_insn_patch_text_nosync` + W^X | **доказано в QEMU (1 CPU)** | замена живой функции + restore | `kpatch`: getpid 114 → 0 → 118 |
+| трамплин | патчер + `module_alloc`/`set_memory_x` | **доказано в QEMU (1 CPU)** | замена тела функции целиком с вызовом оригинала | `ktramp`: `calls=113`, `pgscan_file=6084`, restore `patched=0` |
 | raw payload | `module_alloc` + `set_memory_x` + flush | **доказано** | исполнение доверенного AArch64 | `payload_result=42` |
 | kallsyms via kprobe | `KPROBES`, kallsyms | **доказано** | `kallsyms_lookup_name`, module_alloc, set_memory_x, sys_call_table | `/proc/kbootstrap` |
 | procfs/sysfs | `proc_create`/params | **доказано** | status/control | `/proc/kbootstrap`, `/proc/kpatch`, `/proc/mglru_probe` |
@@ -49,6 +50,26 @@ CFI-проверки **для этого модуля**; это не глоба�
 - на живом SMP нужен `aarch64_insn_patch_text`/stop_machine и проверка под
   нагрузкой;
 - неверный patch = panic/corruption; держи restore path; не rmmod до restore.
+
+## Трамплин: что доказано, а что нет
+
+`ktramp` (QEMU, exact Image) копирует первые **7 инструкций** `get_scan_count`
+в исполняемую страницу из `module_alloc`, добавляет ветвление обратно на
+`target + 28`, патчит вход функции на `b wrap`, а обёртка вызывает трамплин —
+так оригинальный код продолжает работать, пока модуль наблюдает и может править
+`nr[]`.
+
+Измерено под **реальным reclaim** (ext4-файл через `loop0` + 345 MiB анонимного
+давления, см. `docs/MEASURING-RECLAIM.md`): `calls=113`, `pgscan_file=6084`,
+`pgscan_kswapd=5917`, `pgscan_direct=167`, затем `patched=0` после restore.
+
+Границы:
+
+- только single-CPU QEMU — патчер `..._nosync`;
+- ветвление должно быть в пределах ±128 MiB (проверяется, иначе `-ERANGE`);
+- скопированный пролог не должен содержать PC-relative инструкций, ломающихся
+  при переносе — проверяется на конкретной цели, не в общем виде;
+- политика на `nr[]` — эксперимент, не реализация MGLRU.
 
 ## MGLRU: probe, не parity
 

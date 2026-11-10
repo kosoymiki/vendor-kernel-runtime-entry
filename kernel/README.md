@@ -1,5 +1,9 @@
 # Kernel module sources
 
+> 🚧 **Active development** — part of a library that grows regularly. New
+> modules, stages and target profiles land as they pass their QEMU gates;
+> interfaces and evidence are updated together.
+
 - `kbootstrap_core.c` — resolves symbols through `register_kprobe`, allocates
   executable kernel memory, runs a raw AArch64 payload, exposes
   `/proc/kbootstrap`. `KB_PROBE_PANIC` builds a panic probe; `KB_AUDIT_SCT`

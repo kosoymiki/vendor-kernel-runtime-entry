@@ -26,6 +26,18 @@ proven entry.
 
 Logs: `$PREFIX/tmp/mglru-*` (QEMU). These are probe results, not benchmarks.
 
+## Measuring reclaim correctly
+
+Earlier runs reported `pgscan_file=0` and `changed=0` because the workload never
+drove the scanner: `tmpfs` pages are not reclaimable without swap, and normal
+allocations are satisfied from page cache silently. The working recipe —
+ext4 file through `loop0` plus anonymous pressure, polling `pgscan_file` — is in
+[`docs/MEASURING-RECLAIM.md`](MEASURING-RECLAIM.md). With it the trampoline
+probe observes `calls=113` at `pgscan_file=6084`.
+
+Any future MGLRU stage must report `pgscan_*` deltas from this workload;
+otherwise the result is unmeasured.
+
 ## Why it is not “MGLRU backported”
 
 - 5.10 has no `gen_lru` fields; this uses a small side table (hash by page),

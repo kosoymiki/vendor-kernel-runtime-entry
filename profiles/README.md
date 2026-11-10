@@ -1,5 +1,9 @@
 # Target profiles
 
+> 🚧 **Active development** — part of a library that grows regularly. New
+> modules, stages and target profiles land as they pass their QEMU gates;
+> interfaces and evidence are updated together.
+
 A profile is a shell env file consumed by `tools/adapt_kernel.sh --profile`.
 It records the target's exact build inputs and ABI observations. No profile is
 universal.

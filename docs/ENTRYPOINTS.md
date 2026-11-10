@@ -9,6 +9,7 @@ the exact stock Image; it is not a claim for every kernel.
 | LKM + CFI bridge | `MODULES=y`, unsigned allowed | **proven** | module code executes; init/exit and module callbacks | panic probe + payload `/proc/kbootstrap`, payload_result=42 |
 | kprobe / kretprobe | `KPROBES=y` | **proven** | resolve non-exported symbols; observe/modify `get_scan_count` args | `mglru_probe` registered 6/6, hits 426; kretprobe changed=305 |
 | text patch | `aarch64_insn_patch_text_nosync` + W^X | **proven in QEMU (single CPU)** | replace a live function and restore | `kpatch`: getpid 114 → patched 0 → restored 118 |
+| trampoline | patcher + `module_alloc`/`set_memory_x` | **proven in QEMU (single CPU)** | replace a whole function body and still call the original | `ktramp`: `calls=113`, `pgscan_file=6084`, restore `patched=0` |
 | raw payload | `module_alloc` + `set_memory_x` + flush | **proven** | execute trusted AArch64 code | `payload_result=42` |
 | kallsyms via kprobe | `KPROBES`, kallsyms | **proven** | resolve `kallsyms_lookup_name`, module_alloc, set_memory_x, sys_call_table | `/proc/kbootstrap` addresses |
 | procfs/sysfs control | `proc_create`/module params | **proven** | status/control surface | `/proc/kbootstrap`, `/proc/kpatch`, `/proc/mglru_probe` |
@@ -50,6 +51,26 @@ This proves arbitrary function replacement + rollback is possible. It does
   under load;
 - a wrong patch can panic/corrupt; keep the restore path; never rmmod before
   restore.
+
+## Trampoline: what is proven and what is not
+
+`ktramp` (QEMU, exact Image) copies the first **7 instructions** of
+`get_scan_count` into an executable page allocated with `module_alloc`, appends
+a branch back to `target + 28`, patches the function entry with `b wrap`, and
+lets the wrapper call the trampoline — so the original code still runs while the
+module observes and can adjust `nr[]`.
+
+Measured under **real reclaim** (ext4 file through `loop0` + 345 MiB anonymous
+pressure, see `docs/MEASURING-RECLAIM.md`): `calls=113`, `pgscan_file=6084`,
+`pgscan_kswapd=5917`, `pgscan_direct=167`, then `patched=0` after restore.
+
+Limits:
+
+- single-CPU QEMU only — the patcher is `..._nosync`;
+- the branch must be within ±128 MiB (checked; `-ERANGE` otherwise);
+- the copied prologue must not contain PC-relative instructions that break when
+  relocated — checked per target, not in general;
+- a policy on `nr[]` is an experiment, not an MGLRU implementation.
 
 ## MGLRU: probe, not parity
 

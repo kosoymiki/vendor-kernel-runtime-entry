@@ -1,154 +1,335 @@
-# Runtime Entry для vendor-ядра Linux
+<p align="center">
+  <img src="assets/banner.svg" alt="Vendor Kernel Runtime Entry — библиотека runtime-модулей для замороженных вендорских ядер" width="100%">
+</p>
 
-**[English](README.md) | Русский**
+<p align="center">
+  <a href="https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/kosoymiki/vendor-kernel-runtime-entry?style=flat-square&color=22d3ee&label=release"></a>
+  <a href="https://github.com/kosoymiki/vendor-kernel-runtime-entry/actions/workflows/static.yml"><img alt="ci" src="https://img.shields.io/github/actions/workflow/status/kosoymiki/vendor-kernel-runtime-entry/static.yml?style=flat-square&label=ci"></a>
+  <img alt="license" src="https://img.shields.io/badge/license-GPL--2.0--only-a78bfa?style=flat-square">
+  <img alt="platform" src="https://img.shields.io/badge/platform-Android%2016%20%C2%B7%20arm64-60a5fa?style=flat-square">
+  <img alt="kernel" src="https://img.shields.io/badge/kernel-5.10.236%20vendor-34d399?style=flat-square">
+  <img alt="status" src="https://img.shields.io/badge/status-active%20development-fbbf24?style=flat-square">
+</p>
 
-Запуск доверенного кода в **замороженном вендорском ядре** в рантайме — без
-пересборки ядра, без `KEXEC`, `DEVMEM`, `MULTIKERNEL`, `LIVEPATCH` и
-`FUNCTION_TRACER`, без разблокировки загрузчика.
+<p align="center">
+  <a href="README.md">English</a> ·
+  <b>Русский</b> ·
+  <a href="docs/ADAPTING.ru.md">Адаптация</a> ·
+  <a href="docs/ENTRYPOINTS.ru.md">Матрица входа</a> ·
+  <a href="docs/MGLRU.ru.md">MGLRU</a> ·
+  <a href="docs/CVE-PATCHING.ru.md">CVE-патчи</a>
+</p>
 
-Это **reference implementation + per-target builder**, а не универсальный
-модуль. Доказано в QEMU на Realme GT3 (RMX3709), vendor-ядро
-`5.10.236-android12-9-o-g27a48ef6c082`.
+---
 
-> **Безопасность:** это исполнение произвольного кода в ядре. Сначала прочитай
-> [`docs/SECURITY.md`](docs/SECURITY.md). Плохой модуль может вызвать panic или
-> кирпич. Сначала QEMU; на устройстве не делай `rmmod`, пока unload-path не
-> доказан.
+> ## 🚧 Активная разработка
+>
+> **Это живая библиотека, а не замороженный снимок.** Библиотека модулей,
+> per-target builder и методика адаптации пополняются **регулярно**: новые
+> бэкпортированные модули, новые механизмы входа, новые профили устройств и
+> новые evidence появляются по мере того, как проходят QEMU-гейты. Интерфейсы,
+> оффсеты и упаковка модулей могут меняться между минорными версиями.
+>
+> Каждое утверждение в репозитории привязано к воспроизводимому логу. Если
+> стадия ещё не измерена — она помечена как *planned* или *in progress*, но
+> никогда как «сделано».
 
-## В чём была стена
+---
 
-Функции ядра — это compile-time переключатели (`=y` / `=m` / `=n`). Если вендор
-поставил `CONFIG_KEXEC=n`, `CONFIG_DEVMEM=n`, убрал livepatch/ftrace — включить
-их в рантайме нельзя, а заблокированный загрузчик не даёт прошить новое ядро.
+## Содержание
 
-Мы не включаем эти символы. Мы используем **дверь модулей** (`CONFIG_MODULES=y`)
-и решаем всё, что мешало ей работать на vendor-ядре:
+- [Что это](#что-это)
+- [Почему это работает](#почему-это-работает)
+- [Архитектура](#архитектура)
+- [Матрица точек входа](#матрица-точек-входа)
+- [Библиотека модулей](#библиотека-модулей)
+- [Быстрый старт](#быстрый-старт)
+- [Адаптация под своё устройство](#адаптация-под-своё-устройство)
+- [Evidence](#evidence)
+- [Дорожная карта](#дорожная-карта)
+- [Версии](#версии)
+- [Документация](#документация)
+- [Модель безопасности и границы](#модель-безопасности-и-границы)
+- [Структура репозитория](#структура-репозитория)
+- [Участие](#участие)
+- [Источники ресерча](#источники-ресерча)
+- [Лицензия](#лицензия)
 
-1. точный **vermagic** и `.modinfo`;
-2. **`__versions`/CRC** из running `Image` + `/proc/kallsyms`;
-3. смещения **`struct module`** (init/exit), патч по имени символа;
-4. **CFI**-мост (`__cfi_check`, `__cfi_jt_*`, jump tables);
-5. баг **`SHN_XINDEX`** (`ld.lld` без `SYMTAB_SHNDX`);
-6. исполняемая память (`module_alloc` + `set_memory_x` + flush);
-7. резолв символов через **kprobe** (`kallsyms_lookup_name` не экспортируется);
-8. пакет **KernelSU/ReSukiSU**.
+## Что это
 
-## Возможности (всё доказано в QEMU на reference Image)
+**Runtime-вход** для замороженных вендорских ядер Android плюс **растущая
+библиотека модулей**, построенных на нём.
 
-- **LKM + CFI bridge**: init/exit и callbacks модуля исполняются;
-- **kprobe/kretprobe**: резолв неэкспортируемых; наблюдение/правка аргументов;
-- **text patch**: замена живой функции + restore (`kpatch` probe);
-- **raw payload**: `module_alloc` + `set_memory_x`, `payload_result=42`;
-- **procfs/sysfs**: status/control.
+Возможность ядра — это compile-time переключатель. Если вендор собрал
+`CONFIG_KEXEC=n`, `CONFIG_DEVMEM=n`, без `LIVEPATCH` и `FUNCTION_TRACER`, а
+загрузчик заблокирован — штатного способа добавить функциональность ядра в
+рантайме нет. Единственная дверь, которую вендоры обычно оставляют открытой —
+**загружаемые модули**.
 
-Полная матрица evidence: [`docs/ENTRYPOINTS.ru.md`](docs/ENTRYPOINTS.ru.md)
-([EN](docs/ENTRYPOINTS.md)). Статус MGLRU: [`docs/MGLRU.ru.md`](docs/MGLRU.ru.md)
-([EN](docs/MGLRU.md)).
+Репозиторий проходит через эту дверь, доказывает, что за ней можно делать, и
+упаковывает результат для **KernelSU / ReSukiSU** на **Realme GT3 (RMX3709)** с
+вендорским ядром `5.10.236-android12-9-o-g27a48ef6c082`
+(`CFI_CLANG=y`, `LTO_CLANG=y`, SCS/BTI/PAC, strict W^X).
 
-## Доказательство (QEMU, exact stock Image)
+Это **референсная реализация + per-target builder**, а не универсальный бинарь.
+Метод описан пошагово, чтобы под него можно было адаптировать другое
+заблокированное ядро — см. [Адаптация](#адаптация-под-своё-устройство).
 
-Panic probe — `init_module` реально исполняется:
+## Почему это работает
 
-```
-cfi: not using shadow for module kbootstrap
-Kernel panic - not syncing: kbootstrap entered
-  init_module+0x1c/0xfe8 [kbootstrap]
-  do_one_initcall+0x114/0x458
-  do_init_module+0x64/0x8cc
-  load_module+0x3650/0x3f44
-```
+Между «файлом `.ko`» и «кодом, который реально исполняется» стоят пять проблем:
 
-Payload bus — raw AArch64 код исполняется, есть side effect:
+1. **`vermagic` и `.modinfo`** должны точно совпадать с работающим ядром.
+2. **`__versions` / CRC** — вендорское ядро собрано с `MODVERSIONS`, поэтому
+   каждому импортируемому символу нужен реальный CRC из *его* `Image`, а не из
+   публичного дерева.
+3. **Раскладка `struct module`** — `init`/`exit` релоцируются по вендорским
+   оффсетам (`0x190` / `0x3c0` на референсе), а не по upstream 5.10.
+4. **CFI** — `cfi_init()` проверяет CFI-таблицы модуля ещё до вызова
+   `init_module`. Модуль, собранный clang 21 без LTO, не может случайно
+   удовлетворить ядро clang 12 с LTO.
+5. **`SHN_XINDEX`** — `ld.lld` выдаёт индекс таблицы символов, который
+   вендорский загрузчик не принимает, пока не исправлен индекс в section header.
 
-```
-insmod_rc=0
-kbootstrap: ready kln=... alloc=... flush=... sct=... payload=42
-/proc/kbootstrap:
-  kallsyms_lookup_name=...
-  module_alloc=...
-  set_memory_x=...
-  sys_call_table=...
-  payload_result=42
-  proc_entry=created
-```
+CFI-мост — самая интересная часть. `__cfi_check` немедленно возвращает,
+`__cfi_jt_init_module` / `__cfi_jt_cleanup_module` указывают на
+`bti c; b init_module`, а раскладка `.ref.text`/`.ref.data` совпадает с тем, что
+обходит `cfi_init()` (`kernel/module.c:4530-4545`). Мост **не** отключает CFI
+глобально — он отключает проверки **для этого модуля**. Значит, код модуля по
+построению является доверенным, и репозиторий именно так к нему и относится.
 
-Эталонный артефакт: `kbootstrap.ko` sha256
-`065f520b1b562f55eef48a138a12d4df3c18d51357bcbacb39b46d1e9a33c593`.
-QEMU gate: `tests/qemu_payload_gate.sh` → `PASS qemu payload gate`.
+## Архитектура
 
-## Быстрый старт — только reference target
+<p align="center">
+  <img src="assets/architecture.svg" alt="Слои: boot chain, совместимость загрузчика, CFI-мост, runtime-вход, библиотека модулей" width="100%">
+</p>
+
+Ничего выше моста не является kernel-wide. Загрузчик принимает один чужой
+модуль; мост делает этот модуль вызываемым; механизмы входа
+(kprobe/kretprobe, text patch, трамплин, raw payload, procfs/sysfs) делают
+работу; библиотека модулей это упаковывает.
+
+## Матрица точек входа
+
+<p align="center">
+  <img src="assets/entry-matrix.svg" alt="Матрица точек входа: доказано, только observe, закрыто" width="100%">
+</p>
+
+| механизм | требует | статус | что даёт |
+|---|---|---|---|
+| LKM + CFI bridge | `MODULES=y`, unsigned разрешены | **доказано** | init/exit и callbacks модуля |
+| kprobe / kretprobe | `KPROBES=y` | **доказано** | резолв неэкспортируемых символов, правка аргументов |
+| text patch | патчер + W^X | **доказано (QEMU, 1 CPU)** | замена живой функции + restore |
+| трамплин | патчер + `module_alloc` | **доказано (QEMU, 1 CPU)** | замена тела функции целиком |
+| raw payload | `module_alloc`, `set_memory_x` | **доказано** | исполнение доверенного AArch64 |
+| kallsyms через kprobe | `KPROBES`, kallsyms | **доказано** | резолв неэкспортируемых символов |
+| procfs / sysfs | `proc_create` | **доказано** | статус и управление |
+| BPF | `BPF_SYSCALL/EVENTS/JIT` | только observe | tracing, ограничения верификатора |
+| ftrace / livepatch / kexec / devmem | их конфиги | **закрыто** | отсутствуют в вендорском конфиге |
+
+Подробности, включая то, чего text patch **не** доказывает:
+[`docs/ENTRYPOINTS.ru.md`](docs/ENTRYPOINTS.ru.md) ([EN](docs/ENTRYPOINTS.md)).
+
+## Библиотека модулей
+
+<p align="center">
+  <img src="assets/library.svg" alt="Библиотека модулей: kbootstrap, kpatch, ktramp, mglru_probe" width="100%">
+</p>
+
+| модуль | версия | статус | что доказывает | evidence |
+|---|---|---|---|---|
+| [`kbootstrap`](kernel/) | 1.0.0 | stable probe | CFI-мост, резолв kallsyms, raw payload, `/proc` | `payload_result=42` · `065f520b…` |
+| [`kpatch`](modules/kpatch/) | 1.0.2 | probe | save → `aarch64_insn_patch_text_nosync` → проверка → restore | `getpid 114 → 0 → 118` · `c4f9a319…` |
+| [`ktramp`](modules/ktramp/) | 1.0.3 | probe | трамплин с копированием пролога заменяет функцию целиком | `calls=113`, `pgscan_file=6084` · `bbfb599a…` |
+| [`mglru_probe`](modules/mglru/) | 1.0.2 | экспериментальный | kprobe на reclaim path, режимы политики, side table поколений | `6/6` хуков, mode 2 `changed=305` · `245b09fe…` |
+
+Смысл проекта — именно библиотека: каждый модуль собирается из этого дерева
+одним builder'ом, проходит QEMU-гейт и поставляется вместе со своим evidence.
+Новые бэкпорты (vmscan, workingset, folio) добавляются по мере прохождения
+гейтов.
+
+## Быстрый старт
+
+**Только референсная цель** (RMX3709 / 5.10.236). Чужой `.ko` не загрузится, а
+попытка его протолкнуть — это способ окирпичить устройство.
 
 ```sh
-ksud module install module.zip   # release asset, только RMX3709 5.10.236
-# reboot
+# KernelSU / ReSukiSU
+ksud module install module.zip
+# reboot, затем:
 cat /proc/kbootstrap
 ```
 
-**Не ставь этот `.ko` на другое ядро.** Он привязан к vermagic, CRC, struct
-offsets и CFI mode reference-ядра.
-
-## Адаптация под другое ядро
-
-Builder сам определяет config/ABI/vermagic и **отказывается угадывать**:
+Сборка из исходников:
 
 ```sh
 git clone https://github.com/kosoymiki/vendor-kernel-runtime-entry.git
 cd vendor-kernel-runtime-entry
+
+# базовый модуль
+KB_MODULE_SRC=$PWD/kernel KB_MODNAME=kbootstrap \
+  tools/adapt_kernel.sh --profile profiles/rmx3709-5.10.236/profile.env
+
+# probe-модули
+KB_MODULE_SRC=$PWD/modules/ktramp KB_MODNAME=ktramp \
+  tools/adapt_kernel.sh --profile profiles/rmx3709-5.10.236/profile.env
+```
+
+Каждая сборка прогоняет ELF/ABI/CRC-гейты и печатает `PASS` по артефакту:
+
+```
+ktramp.ko   entries=5  imports=4  crc_bad=0  not_exported=0
+OK ktramp: this_module=000400 init=0000000000000190 exit=00000000000003c0
+sha256 bbfb599a17db566dae1eb664dbafba5de1f5568bd08ac7363ca1ceefc35b55e3
+```
+
+## Адаптация под своё устройство
+
+Нужны четыре входа: `Image` цели, её `kallsyms`, один вендорский `.ko` для формы
+ABI и конфиг цели. Builder отказывается угадывать.
+
+```sh
 tools/collect_target.sh target/
-# заполнить profiles/my-device/profile.env (Image, kallsyms, vendor .ko, offsets)
+# заполнить profiles/my-device/profile.env: четыре входа + оффсеты
 tools/adapt_kernel.sh --profile profiles/my-device/profile.env --qemu
 ```
 
-Подробно, по шагам, с troubleshooting:
-[`docs/ADAPTING.ru.md`](docs/ADAPTING.ru.md). English:
-[`docs/ADAPTING.md`](docs/ADAPTING.md).
+Полная цепочка — распаковка boot image, kallsyms, генерация CRC, оффсеты
+`struct module`, определение CFI, QEMU-гейт, упаковка KernelSU, разбор ошибок —
+в [`docs/ADAPTING.ru.md`](docs/ADAPTING.ru.md) ([EN](docs/ADAPTING.md)).
+Каждый шаг описан вместе с причиной и режимами отказа.
 
-## Что работает, а что нет
+## Evidence
 
-**Работает, если:** `CONFIG_MODULES=y`; неподписанные модули разрешены
-(`MODULE_SIG_FORCE` не `y`); `CONFIG_KPROBES=y`; есть target `Image` и
-`kallsyms` (или точный `Module.symvers`); ABI offsets можно вывести.
+<p align="center">
+  <img src="assets/evidence.svg" alt="Сокращённый serial-лог QEMU для трамплина" width="100%">
+</p>
 
-**Не работает, если:** `CONFIG_MODULES=n` (нет LKM-входа);
-`CONFIG_MODULE_SIG_FORCE=y` (обхода нет); `CONFIG_KPROBES=n`; нет ABI-evidence.
-CFI-мост отключает CFI-проверки **для этого модуля** — осознанный module-local
-компромисс, не глобальный обход.
+| артефакт | sha256 | гейт |
+|---|---|---|
+| `kbootstrap.ko` | `065f520b1b562f55eef48a138a12d4df3c18d51357bcbacb39b46d1e9a33c593` | `tests/qemu_payload_gate.sh` |
+| `kpatch.ko` | `c4f9a319feb6da9d8989bbdb15903bcb6ccce4c361c1fcd1edfc237dfe5ddf11` | `tests/qemu_probe_gate.sh` |
+| `ktramp.ko` | `bbfb599a17db566dae1eb664dbafba5de1f5568bd08ac7363ca1ceefc35b55e3` | `tests/qemu_ktramp_gate.sh` |
+| `mglru_probe.ko` | `245b09fe5c64c0efaad9ad71d848b80608474add774a338c5ee4077b820ad719` | `tests/qemu_probe_gate.sh` |
 
-## Карта репозитория
+Измерено в QEMU на точном стоковом `Image` (`-smp 1`, `maxcpus=1`):
 
-```
-kernel/      базовый модуль + CFI bridge
-modules/     kpatch (text patch probe), mglru (Stage A/B probe)
-module/      KernelSU/ReSukiSU пакет
-tools/       per-target builder, ELF/ABI/CRC gates, delta tooling
-profiles/    профили (reference: RMX3709 5.10.236)
-tests/       static checks + QEMU payload gate
-docs/        adaptation, entry matrix, MGLRU, methodology, security, backport map
-```
+- **вход:** `cfi: not using shadow for module kbootstrap` →
+  `Kernel panic - not syncing: kbootstrap entered`, в трейсе
+  `init_module+0x1c/0xfe8 [kbootstrap]` — `init_module` действительно выполнился.
+- **text patch:** первые инструкции `__arm64_sys_getpid` сохранены, записан
+  `mov w0,#0; ret`, `getpid` вернул `0`, после restore — `118`.
+- **трамплин:** вход `get_scan_count` заменён ветвлением в обёртку модуля,
+  7 инструкций пролога скопированы обратно; `calls=113`, `pgscan_file=6084`,
+  `pgscan_kswapd=5917`, `pgscan_direct=167`, после restore `patched=0`.
+- **payload:** `/proc/kbootstrap` отдаёт `payload_result=42`.
 
-## Патч CVE в рантайме
+Как именно создаётся reclaim-нагрузка (и почему `tmpfs` не работает) —
+[`docs/MEASURING-RECLAIM.md`](docs/MEASURING-RECLAIM.md).
 
-Defensive-шаблон: как превратить upstream-фикс в runtime-митигацию
-(kprobe argument guard; trampoline — только для узких случаев) и загрузить
-через тот же entry. Эксплойт-кода нет.
+## Дорожная карта
 
-- [English](docs/CVE-PATCHING.md)
-- [Русский](docs/CVE-PATCHING.ru.md)
+<p align="center">
+  <img src="assets/roadmap.svg" alt="Дорожная карта: вход, text patch, трамплин, policy hooks, бэкпорт 7.4, parity" width="100%">
+</p>
 
-## Бэкпорт 7.4
+| стадия | состояние | содержание |
+|---|---|---|
+| M0 вход | **готово** | LKM + CFI-мост + raw payload |
+| M1 text patch | **готово** | save / patch / verify / restore |
+| M2 трамплин | **готово** | замена функции целиком |
+| M3 policy hooks | **в работе** | режимы reclaim-политики, side table поколений, SMP-safe патчинг |
+| M4 бэкпорт 7.4 | следующее | функции vmscan, workingset refault distance, folio |
+| M5 parity | план | бенчмарки, gap-report, parity-subset |
 
-Измеренная дельта 5.10.236 → 7.4-rc2: **+13.6M LOC** (vendor 30.96M vs latest
-44.56M), union **111,989** путей (43,291 added / 14,639 removed / 40,388
-modified), line diff **+20.76M / −7.40M**, Kconfig **+6,004/−3,084**, 31 новый
-syscall. MGLRU — первый feature/benchmark; CVE — вне roadmap бэкпорта 7.4
-(отдельный defensive-шаблон патча — по ссылке выше). См.
+Probe — это не бэкпорт. M3/M4 закрываются только с поведенческим evidence в
+QEMU и явным списком пробелов; дельта 5.10 → 7.4 измерена в
 [`docs/BACKPORT-7.4.md`](docs/BACKPORT-7.4.md).
 
-## Релиз
+## Версии
 
-- Репозиторий: <https://github.com/kosoymiki/vendor-kernel-runtime-entry>
-- v1.0.2: <https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.2>
+| тег | что вошло |
+|---|---|
+| [v1.0.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.0) | vendor-ABI LKM, CFI-мост, payload bus, пакет KernelSU |
+| [v1.0.1](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.1) | двуязычная документация, полные цепочки адаптации и CVE |
+| [v1.0.2](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.2) | `kpatch` (text patch), `mglru_probe` Stage A/B, матрица входа |
+| [v1.0.3](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.3) | `ktramp` (трамплин), real-reclaim гейт, SVG-инфографика, новый README |
+
+## Документация
+
+| документ | RU | EN | что внутри |
+|---|---|---|---|
+| Гайд по адаптации | [ADAPTING.ru](docs/ADAPTING.ru.md) | [ADAPTING](docs/ADAPTING.md) | полная цепочка, рефлексия по шагам, разбор ошибок |
+| Матрица входа | [ENTRYPOINTS.ru](docs/ENTRYPOINTS.ru.md) | [ENTRYPOINTS](docs/ENTRYPOINTS.md) | каждый механизм с evidence и границами |
+| Измерение reclaim | — | [MEASURING-RECLAIM](docs/MEASURING-RECLAIM.md) | как заставить QEMU реально сканировать file LRU |
+| MGLRU probe | [MGLRU.ru](docs/MGLRU.ru.md) | [MGLRU](docs/MGLRU.md) | статус Stage A/B, что **не** является parity |
+| CVE-патчи | [CVE-PATCHING.ru](docs/CVE-PATCHING.ru.md) | [CVE-PATCHING](docs/CVE-PATCHING.md) | шаблон defensive runtime-митигации |
+| Методология | — | [METHODOLOGY](docs/METHODOLOGY.md) | как анализируется цель и что гейтится |
+| Безопасность | — | [SECURITY](docs/SECURITY.md) | модель угроз, граница доверия, режимы отказа |
+| Карта бэкпорта 7.4 | — | [BACKPORT-7.4](docs/BACKPORT-7.4.md) | измеренная дельта, syscalls, порядок фич |
+
+## Модель безопасности и границы
+
+Это **произвольное исполнение кода в ядре**. Неверный модуль может вызвать
+panic, повредить память или окирпичить устройство. Репозиторий построен вокруг
+этого факта:
+
+- **Сначала QEMU.** Каждый модуль проходит гейт на точном стоковом `Image`,
+  прежде чем о нём вообще говорят, что он работает.
+- **Никакого `rmmod` до restore.** Модуль, пропатчивший текст, обязан вернуть
+  оригинал, и restore должен быть наблюдён, прежде чем обсуждать выгрузку.
+- **`nosync` — только один CPU.** `aarch64_insn_patch_text_nosync` не
+  останавливает другие CPU. На SMP нужен `aarch64_insn_patch_text`/`stop_machine`
+  и проверка под нагрузкой.
+- **CFI-мост локален для модуля.** Проверки отключены для модуля, не для ядра.
+  Код модуля — доверенный; подписывайте и ревьюйте его соответственно.
+- **Универсального бинаря нет.** Профили per-target; несовпавший `.ko`
+  отбрасывается by design.
+
+Перед загрузкой на устройство прочитайте [`docs/SECURITY.md`](docs/SECURITY.md).
+
+## Структура репозитория
+
+```
+assets/      сгенерированная SVG-инфографика (баннер, архитектура, матрица, roadmap, evidence)
+kernel/      исходник базового модуля + CFI-мост
+modules/     kpatch (text patch), ktramp (трамплин), mglru (probe Stage A/B)
+module/      пакет KernelSU / ReSukiSU
+tools/       per-target builder, ELF/ABI/CRC-гейты, delta и генератор ассетов
+profiles/    профили целей (референс: RMX3709 5.10.236)
+tests/       статические проверки, QEMU-гейты, freestanding helper для reclaim
+docs/        адаптация, матрица входа, reclaim, MGLRU, CVE, методология, безопасность
+```
+
+Инфографика генерируется, а не рисуется руками: `python3 tools/make_assets.py`
+детерминированно пересобирает все шесть SVG и валидирует XML и геометрию.
+Меняйте генератор, а не ассет.
+
+## Участие
+
+- Держите evidence рядом с изменением: модуль без QEMU-гейта не мержится.
+- Один логический change на коммит; документация и код едут вместе.
+- Новые цели — в `profiles/<device>-<kernel>/profile.env` с реально
+  наблюдёнными входами и оффсетами, без догадок.
+- Probe обязан называться probe: `probe`, `experimental` или `stable probe`.
+  «Backported» зарезервировано для измеренной parity.
+- Перед pull request: `bash tests/static_checks.sh` и
+  `python3 tools/make_assets.py --check`.
+
+## Источники ресерча
+
+Структура README и документации опирается на первичные источники, accessed
+2026-11-10 через headless browser (stealth-browser MCP):
+
+| источник | для чего использован |
+|---|---|
+| [GitHub Docs — About the repository README file](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-readmes) | что ожидается от README |
+| [GitHub Docs — basic writing and formatting](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax) | Markdown, изображения, HTML-блоки |
+| [Best-README-Template](https://github.com/othneildrew/Best-README-Template) | порядок секций, TOC, строка бейджей |
+| [awesome-readme](https://github.com/matiassingers/awesome-readme) | критерии оценки (баннер, бейджи, TOC, скриншоты, шаги установки) |
+| [shields.io](https://shields.io/) | синтаксис статических и динамических бейджей |
+| [Mermaid docs](https://mermaid.js.org/syntax/flowchart.html) | конвенции диаграмм (использован SVG — ради офлайн-детерминизма) |
 
 ## Лицензия
 
-GPL-2.0-only. Модули ядра должны быть GPL-совместимы.
+GPL-2.0-only. Модули ядра должны быть GPL-совместимыми.

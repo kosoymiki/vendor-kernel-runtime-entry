@@ -1,5 +1,9 @@
 # Examples / extending the base module
 
+> 🚧 **Active development** — part of a library that grows regularly. New
+> modules, stages and target profiles land as they pass their QEMU gates;
+> interfaces and evidence are updated together.
+
 The reference module is intentionally small. To run your own trusted code:
 
 1. Copy `kernel/kbootstrap_core.c` as a starting point.

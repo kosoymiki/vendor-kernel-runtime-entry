@@ -1,155 +1,331 @@
-# Vendor Kernel Runtime Entry
+<p align="center">
+  <img src="assets/banner.svg" alt="Vendor Kernel Runtime Entry — runtime module library for vendor-frozen kernels" width="100%">
+</p>
 
-**English | [Русский](README.ru.md)**
+<p align="center">
+  <a href="https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/kosoymiki/vendor-kernel-runtime-entry?style=flat-square&color=22d3ee&label=release"></a>
+  <a href="https://github.com/kosoymiki/vendor-kernel-runtime-entry/actions/workflows/static.yml"><img alt="ci" src="https://img.shields.io/github/actions/workflow/status/kosoymiki/vendor-kernel-runtime-entry/static.yml?style=flat-square&label=ci"></a>
+  <img alt="license" src="https://img.shields.io/badge/license-GPL--2.0--only-a78bfa?style=flat-square">
+  <img alt="platform" src="https://img.shields.io/badge/platform-Android%2016%20%C2%B7%20arm64-60a5fa?style=flat-square">
+  <img alt="kernel" src="https://img.shields.io/badge/kernel-5.10.236%20vendor-34d399?style=flat-square">
+  <img alt="status" src="https://img.shields.io/badge/status-active%20development-fbbf24?style=flat-square">
+</p>
 
-Load trusted code into a **vendor-frozen Linux kernel** at runtime — without
-recompiling the kernel, without `KEXEC`, `DEVMEM`, `MULTIKERNEL`, `LIVEPATCH`
-or `FUNCTION_TRACER`, and without an unlocked bootloader.
+<p align="center">
+  <b>English</b> ·
+  <a href="README.ru.md">Русский</a> ·
+  <a href="docs/ADAPTING.md">Adapt</a> ·
+  <a href="docs/ENTRYPOINTS.md">Entry matrix</a> ·
+  <a href="docs/MGLRU.md">MGLRU</a> ·
+  <a href="docs/CVE-PATCHING.md">CVE patching</a>
+</p>
 
-This repository is a **reference implementation + per-target builder**, not a
-universal kernel module. It was proven in QEMU on the Realme GT3 (RMX3709)
-vendor kernel `5.10.236-android12-9-o-g27a48ef6c082`.
+---
 
-> **Security:** this is arbitrary kernel code execution. Read
-> [`docs/SECURITY.md`](docs/SECURITY.md) first. A bad module can panic or brick
-> the device. Test in QEMU; never `rmmod` on a device until the unload path is
-> proven.
+> ## 🚧 Active development
+>
+> **This is a living library, not a frozen snapshot.** The module library, the
+> per-target builder and the adaptation methodology are extended **regularly**:
+> new backported modules, new entry mechanisms, new target profiles and new
+> evidence land as they are proven in QEMU. Interfaces, offsets and module
+> packaging may change between minor versions.
+>
+> Every claim in this repository is tied to a reproducible log. If a stage is
+> not measured yet, it is listed as *planned* or *in progress* — never as done.
 
-## The wall, and the door
+---
 
-Kernel features are compile-time switches (`=y` / `=m` / `=n`). If a vendor
-ships `CONFIG_KEXEC=n`, `CONFIG_DEVMEM=n` or no livepatch/ftrace, you cannot
-turn them on at runtime, and a locked bootloader prevents flashing a new
-kernel.
+## Table of contents
 
-This project uses the door vendors usually leave open — **loadable modules** —
-and solves the real blockers around it:
+- [What this is](#what-this-is)
+- [Why it works](#why-it-works)
+- [Architecture](#architecture)
+- [Entry-point matrix](#entry-point-matrix)
+- [Module library](#module-library)
+- [Quick start](#quick-start)
+- [Adapt to your device](#adapt-to-your-device)
+- [Evidence](#evidence)
+- [Roadmap](#roadmap)
+- [Versions](#versions)
+- [Documentation](#documentation)
+- [Security model and limits](#security-model-and-limits)
+- [Repository layout](#repository-layout)
+- [Contributing](#contributing)
+- [Research ledger](#research-ledger)
+- [License](#license)
 
-1. exact **vermagic** and `.modinfo`;
-2. **`__versions` / CRC** table from the running `Image` + `/proc/kallsyms`;
-3. **`struct module`** init/exit offsets, patched by symbol name;
-4. **CFI** `cfi_init()` bridge (`__cfi_check`, `__cfi_jt_*`, jump tables);
-5. **`SHN_XINDEX`** linker bug (`ld.lld` without `SYMTAB_SHNDX`);
-6. executable memory for payloads (`module_alloc` + `set_memory_x` + flush);
-7. symbol resolution through **kprobe** (`kallsyms_lookup_name` is not exported);
-8. a **KernelSU/ReSukiSU** boot package.
+## What this is
 
-## Capabilities (all QEMU-proven on the reference Image)
+A **runtime entry** for vendor-frozen Android kernels, plus a **growing library
+of modules** built on it.
 
-- **LKM + CFI bridge**: module init/exit and callbacks run;
-- **kprobe/kretprobe**: resolve non-exported symbols; observe/modify args;
-- **text patch**: replace a live function and restore (`kpatch` probe);
-- **raw payload**: `module_alloc` + `set_memory_x`, `payload_result=42`;
-- **procfs/sysfs**: status/control surfaces.
+A kernel feature is a compile-time switch. When a vendor ships `CONFIG_KEXEC=n`,
+`CONFIG_DEVMEM=n`, no `LIVEPATCH` and no `FUNCTION_TRACER` — and the bootloader
+is locked — there is no supported way to add kernel functionality at runtime.
+The one door vendors usually leave open is **loadable modules**.
 
-The full evidence matrix is in [`docs/ENTRYPOINTS.md`](docs/ENTRYPOINTS.md)
-([RU](docs/ENTRYPOINTS.ru.md)). MGLRU probe status: [`docs/MGLRU.md`](docs/MGLRU.md)
-([RU](docs/MGLRU.ru.md)).
+This repository walks through that door, proves what can be done behind it, and
+packages the result for **KernelSU / ReSukiSU** on the **Realme GT3 (RMX3709)**
+with the vendor kernel `5.10.236-android12-9-o-g27a48ef6c082`
+(`CFI_CLANG=y`, `LTO_CLANG=y`, SCS/BTI/PAC, strict W^X).
 
-## Proof (QEMU, exact stock Image)
+It is a **reference implementation + per-target builder**, not a universal
+binary. The same method is documented step by step so another locked kernel can
+be adapted — see [Adapt to your device](#adapt-to-your-device).
 
-Panic probe — `init_module` executes:
+## Why it works
 
-```
-cfi: not using shadow for module kbootstrap
-Kernel panic - not syncing: kbootstrap entered
-  init_module+0x1c/0xfe8 [kbootstrap]
-  do_one_initcall+0x114/0x458
-  do_init_module+0x64/0x8cc
-  load_module+0x3650/0x3f44
-```
+Five problems stand between "a `.ko` file" and "code that actually runs":
 
-Payload bus — raw AArch64 code runs and a side effect is exposed:
+1. **`vermagic` and `.modinfo`** must match the running kernel exactly.
+2. **`__versions` / CRC** — the vendor kernel is built `MODVERSIONS`, so every
+   imported symbol needs the real CRC from *its* `Image`, not from a public tree.
+3. **`struct module` layout** — `init`/`exit` are relocated against the vendor
+   offsets (`0x190` / `0x3c0` on the reference), not against upstream 5.10.
+4. **CFI** — `cfi_init()` verifies the module's CFI tables before `init_module`
+   is ever called. A clang-21, non-LTO module cannot satisfy a clang-12 LTO
+   kernel by accident.
+5. **`SHN_XINDEX`** — `ld.lld` emits a symbol table index that the vendor loader
+   rejects unless the section-header index is fixed.
 
-```
-insmod_rc=0
-kbootstrap: ready kln=... alloc=... flush=... sct=... payload=42
-/proc/kbootstrap:
-  kallsyms_lookup_name=...
-  module_alloc=...
-  set_memory_x=...
-  sys_call_table=...
-  payload_result=42
-  proc_entry=created
-```
+The CFI bridge is the interesting part. `__cfi_check` returns immediately,
+`__cfi_jt_init_module` / `__cfi_jt_cleanup_module` point at
+`bti c; b init_module`, and the `.ref.text`/`.ref.data` layout matches what
+`cfi_init()` walks (`kernel/module.c:4530-4545`). The bridge does **not** disable
+CFI kernel-wide — it disables the checks **for this module**. The module is
+therefore trusted code by construction, and the repository treats it that way.
 
-Reference artifact: `kbootstrap.ko` sha256
-`065f520b1b562f55eef48a138a12d4df3c18d51357bcbacb39b46d1e9a33c593`.
-QEMU gate: `tests/qemu_payload_gate.sh` → `PASS qemu payload gate`.
+## Architecture
 
-## Quick start — reference target only
+<p align="center">
+  <img src="assets/architecture.svg" alt="Layered architecture: boot chain, loader compatibility, CFI bridge, runtime entry, module library" width="100%">
+</p>
+
+Nothing above the bridge is kernel-wide. The loader accepts one foreign module;
+the bridge makes that module callable; the entry mechanisms
+(kprobe/kretprobe, text patch, trampoline, raw payload, procfs/sysfs) do the
+actual work; the module library packages it.
+
+## Entry-point matrix
+
+<p align="center">
+  <img src="assets/entry-matrix.svg" alt="Entry-point matrix: proven, observe-only and closed mechanisms" width="100%">
+</p>
+
+| mechanism | needs | state | what it gives |
+|---|---|---|---|
+| LKM + CFI bridge | `MODULES=y`, unsigned allowed | **proven** | module init/exit and callbacks |
+| kprobe / kretprobe | `KPROBES=y` | **proven** | resolve non-exported symbols, modify args |
+| text patch | patcher + W^X | **proven (1 CPU QEMU)** | replace a live function, restore |
+| trampoline | patcher + `module_alloc` | **proven (1 CPU QEMU)** | replace a whole function body |
+| raw payload | `module_alloc`, `set_memory_x` | **proven** | execute trusted AArch64 |
+| kallsyms via kprobe | `KPROBES`, kallsyms | **proven** | non-exported symbol resolution |
+| procfs / sysfs | `proc_create` | **proven** | status and control surface |
+| BPF | `BPF_SYSCALL/EVENTS/JIT` | observe only | tracing, verifier limits |
+| ftrace / livepatch / kexec / devmem | their configs | **closed** | absent from the vendor config |
+
+Full detail, including what text patching does *not* prove: [`docs/ENTRYPOINTS.md`](docs/ENTRYPOINTS.md)
+([RU](docs/ENTRYPOINTS.ru.md)).
+
+## Module library
+
+<p align="center">
+  <img src="assets/library.svg" alt="Module library: kbootstrap, kpatch, ktramp, mglru_probe" width="100%">
+</p>
+
+| module | version | status | what it proves | evidence |
+|---|---|---|---|---|
+| [`kbootstrap`](kernel/) | 1.0.0 | stable probe | CFI bridge, kallsyms resolution, raw payload, `/proc` control | `payload_result=42` · `065f520b…` |
+| [`kpatch`](modules/kpatch/) | 1.0.2 | probe | save → `aarch64_insn_patch_text_nosync` → verify → restore of a syscall | `getpid 114 → 0 → 118` · `c4f9a319…` |
+| [`ktramp`](modules/ktramp/) | 1.0.3 | probe | copied-prologue trampoline replaces a whole function, then restores | `calls=113`, `pgscan_file=6084` · `bbfb599a…` |
+| [`mglru_probe`](modules/mglru/) | 1.0.2 | experimental | reclaim-path kprobes, scan policy modes, generation side table | `6/6` hooks, mode 2 `changed=305` · `245b09fe…` |
+
+The library is the point of the project: each module is built from this tree by
+one builder, gated in QEMU, and shipped with its evidence. New backports
+(vmscan, workingset, folio paths) are added as they pass their gates.
+
+## Quick start
+
+**Reference target only** (RMX3709 / 5.10.236). A foreign `.ko` will not load,
+and forcing it is how devices get bricked.
 
 ```sh
-# release asset: module.zip (RMX3709 5.10.236 only)
+# KernelSU / ReSukiSU
 ksud module install module.zip
-# reboot
+# reboot, then:
 cat /proc/kbootstrap
 ```
 
-**Do not install this `.ko` on another kernel.** It is tied to the reference
-vermagic, CRCs, struct offsets and CFI mode.
-
-## Adapt to another kernel
-
-The builder derives config/ABI/vermagic from the target and refuses to guess:
+Build from source:
 
 ```sh
 git clone https://github.com/kosoymiki/vendor-kernel-runtime-entry.git
 cd vendor-kernel-runtime-entry
+
+# base module
+KB_MODULE_SRC=$PWD/kernel KB_MODNAME=kbootstrap \
+  tools/adapt_kernel.sh --profile profiles/rmx3709-5.10.236/profile.env
+
+# probes
+KB_MODULE_SRC=$PWD/modules/ktramp KB_MODNAME=ktramp \
+  tools/adapt_kernel.sh --profile profiles/rmx3709-5.10.236/profile.env
+```
+
+Every build runs the ELF/ABI/CRC gates and prints `PASS` per artifact:
+
+```
+ktramp.ko   entries=5  imports=4  crc_bad=0  not_exported=0
+OK ktramp: this_module=000400 init=0000000000000190 exit=00000000000003c0
+sha256 bbfb599a17db566dae1eb664dbafba5de1f5568bd08ac7363ca1ceefc35b55e3
+```
+
+## Adapt to your device
+
+Four inputs are required: the target `Image`, its `kallsyms`, one vendor `.ko`
+for ABI shape, and the target config. The builder refuses to guess.
+
+```sh
 tools/collect_target.sh target/
-# fill profiles/my-device/profile.env (Image, kallsyms, vendor .ko, offsets)
+# fill profiles/my-device/profile.env with the four inputs + offsets
 tools/adapt_kernel.sh --profile profiles/my-device/profile.env --qemu
 ```
 
-Full step-by-step: [`docs/ADAPTING.md`](docs/ADAPTING.md) (detailed, with
-troubleshooting). Russian: [`docs/ADAPTING.ru.md`](docs/ADAPTING.ru.md).
+The full chain — boot image extraction, kallsyms, CRC generation, `struct
+module` offsets, CFI detection, QEMU gate, KernelSU packaging, troubleshooting —
+is in [`docs/ADAPTING.md`](docs/ADAPTING.md) ([RU](docs/ADAPTING.ru.md)).
+It documents every step with the reasoning behind it, including the failure
+modes.
 
-## What works / what does not
+## Evidence
 
-**Works when:** `CONFIG_MODULES=y`, unsigned modules are allowed
-(`MODULE_SIG_FORCE` not `y`), `CONFIG_KPROBES=y`, the target `Image` and
-`kallsyms` are available (or exact `Module.symvers`), and ABI offsets can be
-derived.
+<p align="center">
+  <img src="assets/evidence.svg" alt="Trimmed QEMU serial log of the trampoline probe" width="100%">
+</p>
 
-**Does not work when:** `CONFIG_MODULES=n` (no LKM entry);
-`CONFIG_MODULE_SIG_FORCE=y` (no bypass); `CONFIG_KPROBES=n`; no target ABI
-evidence. The CFI bridge disables CFI checks **for this module** — a deliberate
-module-local ABI tradeoff, not a kernel-wide bypass.
+| artifact | sha256 | gate |
+|---|---|---|
+| `kbootstrap.ko` | `065f520b1b562f55eef48a138a12d4df3c18d51357bcbacb39b46d1e9a33c593` | `tests/qemu_payload_gate.sh` |
+| `kpatch.ko` | `c4f9a319feb6da9d8989bbdb15903bcb6ccce4c361c1fcd1edfc237dfe5ddf11` | `tests/qemu_probe_gate.sh` |
+| `ktramp.ko` | `bbfb599a17db566dae1eb664dbafba5de1f5568bd08ac7363ca1ceefc35b55e3` | `tests/qemu_ktramp_gate.sh` |
+| `mglru_probe.ko` | `245b09fe5c64c0efaad9ad71d848b80608474add774a338c5ee4077b820ad719` | `tests/qemu_probe_gate.sh` |
 
-## Repository map
+Measured on QEMU with the exact stock `Image` (`-smp 1`, `maxcpus=1`):
+
+- **entry:** `cfi: not using shadow for module kbootstrap` →
+  `Kernel panic - not syncing: kbootstrap entered` with
+  `init_module+0x1c/0xfe8 [kbootstrap]` in the trace — `init_module` really ran.
+- **text patch:** `__arm64_sys_getpid` saved, patched to `mov w0,#0; ret`,
+  returned `0`, restored, returned `118`.
+- **trampoline:** `get_scan_count` entry replaced with a branch into the module
+  wrapper, 7 prologue instructions copied back; `calls=113`,
+  `pgscan_file=6084`, `pgscan_kswapd=5917`, `pgscan_direct=167`, then
+  `patched=0` after restore.
+- **payload:** `/proc/kbootstrap` reports `payload_result=42`.
+
+How the reclaim workload is generated (and why `tmpfs` does not work) is
+documented in [`docs/MEASURING-RECLAIM.md`](docs/MEASURING-RECLAIM.md).
+
+## Roadmap
+
+<p align="center">
+  <img src="assets/roadmap.svg" alt="Roadmap: entry, text patch, trampoline, policy hooks, 7.4 backport, parity" width="100%">
+</p>
+
+| stage | state | content |
+|---|---|---|
+| M0 entry | **done** | LKM + CFI bridge + raw payload |
+| M1 text patch | **done** | save / patch / verify / restore |
+| M2 trampoline | **done** | whole-function replacement |
+| M3 policy hooks | **in progress** | reclaim policy modes, generation side table, SMP-safe patching |
+| M4 7.4 backport | next | vmscan functions, workingset refault distance, folio paths |
+| M5 parity | planned | benchmarks, gap report, parity subset |
+
+A probe is not a backport. M3/M4 land only with QEMU behaviour evidence and an
+explicit gap list; the 5.10 → 7.4 delta is measured in
+[`docs/BACKPORT-7.4.md`](docs/BACKPORT-7.4.md).
+
+## Versions
+
+| tag | what landed |
+|---|---|
+| [v1.0.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.0) | vendor-ABI LKM, CFI bridge, payload bus, KernelSU package |
+| [v1.0.1](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.1) | bilingual docs, full adaptation and CVE-patching chains |
+| [v1.0.2](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.2) | `kpatch` text-patch probe, `mglru_probe` Stage A/B, entry matrix |
+| [v1.0.3](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.3) | `ktramp` full-function trampoline, real-reclaim gate, SVG infographics, README overhaul |
+
+## Documentation
+
+| document | EN | RU | what is inside |
+|---|---|---|---|
+| Adaptation guide | [ADAPTING](docs/ADAPTING.md) | [ADAPTING.ru](docs/ADAPTING.ru.md) | full user chain, per-step reasoning, troubleshooting |
+| Entry matrix | [ENTRYPOINTS](docs/ENTRYPOINTS.md) | [ENTRYPOINTS.ru](docs/ENTRYPOINTS.ru.md) | every mechanism with its evidence and its limits |
+| Measuring reclaim | [MEASURING-RECLAIM](docs/MEASURING-RECLAIM.md) | — | how to make QEMU actually scan the file LRU |
+| MGLRU probe | [MGLRU](docs/MGLRU.md) | [MGLRU.ru](docs/MGLRU.ru.md) | Stage A/B status, what is *not* parity |
+| CVE patching | [CVE-PATCHING](docs/CVE-PATCHING.md) | [CVE-PATCHING.ru](docs/CVE-PATCHING.ru.md) | defensive runtime mitigation template |
+| Methodology | [METHODOLOGY](docs/METHODOLOGY.md) | — | how a target is analysed and what is gated |
+| Security | [SECURITY](docs/SECURITY.md) | — | threat model, trust boundary, failure modes |
+| 7.4 backport map | [BACKPORT-7.4](docs/BACKPORT-7.4.md) | — | measured delta, syscalls, feature order |
+
+## Security model and limits
+
+This is **arbitrary kernel code execution**. A wrong module can panic, corrupt
+memory or brick the device. The repository is built around that fact:
+
+- **QEMU first.** Every module is gated against the exact stock `Image` before
+  anyone is told it works.
+- **No `rmmod` before restore.** A module that patched text must restore it, and
+  the restore must be observed, before unload is even discussed.
+- **`nosync` is single-CPU only.** `aarch64_insn_patch_text_nosync` does not stop
+  other CPUs. On SMP use `aarch64_insn_patch_text`/`stop_machine` and verify
+  under load.
+- **The CFI bridge is module-local.** CFI checks are disabled for the module, not
+  for the kernel. Module code is trusted code; sign and review it accordingly.
+- **No universal binary.** Profiles are per target; a mismatched `.ko` is
+  rejected by design.
+
+Read [`docs/SECURITY.md`](docs/SECURITY.md) before loading anything on a device.
+
+## Repository layout
 
 ```
+assets/      generated SVG infographics (banner, architecture, matrix, roadmap, evidence)
 kernel/      base module source + CFI bridge
-modules/     kpatch (text patch probe), mglru (Stage A/B probe)
-module/      KernelSU/ReSukiSU package
-tools/       per-target builder, ELF/ABI/CRC gates, delta tooling
+modules/     kpatch (text patch), ktramp (trampoline), mglru (Stage A/B probe)
+module/      KernelSU / ReSukiSU package
+tools/       per-target builder, ELF/ABI/CRC gates, delta + asset tooling
 profiles/    target profiles (reference: RMX3709 5.10.236)
-tests/       static checks + QEMU payload gate
-docs/        adaptation, entry matrix, MGLRU, methodology, security, backport map
+tests/       static checks, QEMU gates, freestanding reclaim helper
+docs/        adaptation, entry matrix, reclaim, MGLRU, CVE, methodology, security
 ```
 
-## Patching a CVE at runtime
+The infographics are generated, not hand-drawn: `python3 tools/make_assets.py`
+rewrites all six SVGs deterministically and validates XML and geometry. Change
+the generator, not the asset.
 
-A defensive template shows how to turn an upstream fix into a runtime
-mitigation module (kprobe argument guard; trampoline only for narrow cases)
-and load it through the same entry. No exploit code.
+## Contributing
 
-- [English](docs/CVE-PATCHING.md)
-- [Русский](docs/CVE-PATCHING.ru.md)
+- Keep evidence with the change: a module without a QEMU gate is not merged.
+- One logical change per commit; docs and code travel together.
+- New targets go into `profiles/<device>-<kernel>/profile.env` with the inputs
+  and offsets that were actually observed — no guesses.
+- Probes must say what they are: `probe`, `experimental` or `stable probe`.
+  "Backported" is reserved for parity that has been measured.
+- Run `bash tests/static_checks.sh` and `python3 tools/make_assets.py --check`
+  before opening a pull request.
 
-## Backporting 7.4
+## Research ledger
 
-Measured 5.10.236 → 7.4-rc2 delta: **+13.6M LOC** (vendor 30.96M vs latest
-44.56M), union **111,989** paths (43,291 added / 14,639 removed / 40,388
-modified), line diff **+20.76M / −7.40M**, Kconfig **+6,004/−3,084**, 31 new
-syscalls. MGLRU is the first feature/benchmark; CVE point-fixes are outside
-the 7.4 feature-backport roadmap (a separate defensive patching template is
-linked above). See [`docs/BACKPORT-7.4.md`](docs/BACKPORT-7.4.md).
+README and documentation structure were informed by primary sources, accessed
+2026-11-10 via a headless browser (stealth-browser MCP):
 
-## Release
-
-- Repository: <https://github.com/kosoymiki/vendor-kernel-runtime-entry>
-- v1.0.2: <https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.2>
+| source | used for |
+|---|---|
+| [GitHub Docs — About the repository README file](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-readmes) | what a README is expected to contain |
+| [GitHub Docs — basic writing and formatting](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax) | Markdown, images, HTML blocks |
+| [Best-README-Template](https://github.com/othneildrew/Best-README-Template) | section order, TOC, badge row |
+| [awesome-readme](https://github.com/matiassingers/awesome-readme) | evaluation criteria (banner, badges, TOC, screenshots, install steps) |
+| [shields.io](https://shields.io/) | static and dynamic badge syntax |
+| [Mermaid docs](https://mermaid.js.org/syntax/flowchart.html) | diagram conventions (SVG used instead, for offline determinism) |
 
 ## License
 

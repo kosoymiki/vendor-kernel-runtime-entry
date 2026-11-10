@@ -1,5 +1,9 @@
 # KernelSU module package
 
+> 🚧 **Active development** — part of a library that grows regularly. New
+> modules, stages and target profiles land as they pass their QEMU gates;
+> interfaces and evidence are updated together.
+
 Install `module.zip` with KernelSU/ReSukiSU:
 
 ```sh

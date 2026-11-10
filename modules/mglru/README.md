@@ -1,5 +1,9 @@
 # mglru_probe — Stage A/B reclaim probe (experimental)
 
+> 🚧 **Active development** — part of a library that grows regularly. New
+> modules, stages and target profiles land as they pass their QEMU gates;
+> interfaces and evidence are updated together.
+
 This is a **probe**, not full MGLRU. It registers kprobes/kretprobes on the 5.10
 reclaim path and exposes counters/policy modes through `/proc/mglru_probe`.
 
