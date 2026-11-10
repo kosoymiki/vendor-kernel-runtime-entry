@@ -1,0 +1,16 @@
+# build outputs
+*.o
+*.ko
+*.mod
+*.mod.c
+*.cmd
+.*.cmd
+Module.symvers
+modules.order
+dist/
+__pycache__/
+*.pyc
+# local target data / logs
+target/
+evidence/*.log
+module/*.log

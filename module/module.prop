@@ -1,0 +1,6 @@
+id=h2-runtime-entry
+name=H2 Runtime Entry
+version=1.0.0
+versionCode=1
+author=kosoymiki
+description=Runtime entry and payload bus for vendor-frozen Linux kernels (reference profile RMX3709 5.10.236). Build per target; not a universal binary.

@@ -1,0 +1,11 @@
+name: static
+on: [push, pull_request]
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.x' }
+      - name: static checks
+        run: bash tests/static_checks.sh
