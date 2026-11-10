@@ -22,6 +22,8 @@
 
 ---
 
+# Vendor Kernel Runtime Entry
+
 > ## 🚧 Active development
 >
 > **This is a living library, not a frozen snapshot.** The module library, the
