@@ -136,7 +136,7 @@ linked above). See [`docs/BACKPORT-7.4.md`](docs/BACKPORT-7.4.md).
 ## Release
 
 - Repository: <https://github.com/kosoymiki/vendor-kernel-runtime-entry>
-- v1.0.0: <https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.0>
+- v1.0.1: <https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.1>
 
 ## License
 

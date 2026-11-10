@@ -1,68 +1,143 @@
-# Адаптация под другое vendor-ядро — подробная инструкция
+# Адаптация под другое vendor-ядро — полная инструкция с рефлексией
 
-Это длинная версия. Короткая — в `README.ru.md`. Builder **не** делает
-универсальный бинарник: он берёт факты у target-ядра и собирает/нормализует
-модуль под него. Если факта нет — он останавливается, а не угадывает.
+Это длинная версия. Короткая — `README.ru.md`. Здесь описан **путь пользователя
+целиком**: от «подходит ли мой телефон» до `cat /proc/kbootstrap` после
+установки. На каждом шаге: зачем, что делать, что должно получиться, что
+делать, если не получилось, и какое evidence остаётся.
 
----
-
-## 0. Что нужно
-
-| что | зачем |
-|---|---|
-| исходники ядра, максимально совпадающие с running kernel | kbuild, headers, config |
-| build-дерево с `.config` | флаги/заголовки для сборки |
-| running config `/proc/config.gz` | проверка CFI/MODVERSIONS/KPROBES/MODULES |
-| несжатый `Image` | восстановление CRC/проверка ABI |
-| дамп `/proc/kallsyms` | адреса/имена/CRC-таблицы |
-| known-good vendor `.ko` | ABI-oracle: vermagic, init/exit offsets, CFI mode |
-| `clang`, `ld.lld`, `llvm-objcopy`, `llvm-readelf`, `make`, `python3`, `zip` | toolchain |
-| `qemu-system-aarch64` + static busybox | безопасный gate до устройства |
-
-Если vendor `.ko` нет — offsets можно вывести через QEMU+gdb (см. §4), но
-builder всё равно требует явные `--init-off/--exit-off`.
+Builder **не делает универсальный бинарник**. Он берёт факты у target-ядра и
+собирает/нормализует модуль под него. Если факта нет — останавливается, а не
+угадывает.
 
 ---
 
-## 1. Собрать факты target
+# Часть I. Карта пути пользователя
+
+```
+[0] Подходит ли метод?
+      │  CONFIG_MODULES=y? MODULE_SIG_FORCE!=y? KPROBES=y?
+      ├─ нет → метод не применим; не трать время
+      └─ да
+[1] Собрать факты target
+      config, kallsyms, Image, vendor .ko, version
+[2] Подготовить build tree
+      source + O-tree + KB_CONFIG (running config)
+[3] Найти ABI oracle
+      vermagic, init/exit offsets, CFI mode
+[4] Собрать/проверить __versions
+      exact Module.symvers или Image+kallsyms+link base
+[5] Определить CFI/MODVERSIONS
+      KB_CFI, KB_MODVERSIONS
+[6] Заполнить профиль
+[7] Запустить builder
+      build → symtab fix → postprocess → gates → dist
+[8] QEMU gate
+      insmod_rc=0, payload_result=42
+[9] Установка на устройство
+      KernelSU zip → reboot → /proc/kbootstrap
+[10] Rollback/обслуживание
+      reboot, не rmmod; при обновлении ядра — заново
+```
+
+Три сценария пользователя:
+
+- **A. То же reference-устройство** (RMX3709 5.10.236): скачал `module.zip` →
+  `ksud module install` → reboot → `cat /proc/kbootstrap`. Сборка не нужна.
+- **B. Другое устройство, есть vendor `.ko`**: клон → collect → profile →
+  build → QEMU → install.
+- **C. Другое устройство, vendor `.ko` нет**: то же, но offsets берутся через
+  QEMU+gdb; дольше и требует точный Image.
+
+---
+
+# Часть II. Пошагово, с рефлексией
+
+## Шаг 0. Проверить, подходит ли метод
+
+### Зачем
+Не начинать сборку, если ядро в принципе не даёт LKM-вход. Это экономит часы.
+
+### Команды
+
+```sh
+mkdir -p target
+su -c 'zcat /proc/config.gz' > target/config
+grep -E '^CONFIG_(MODULES|MODULE_SIG_FORCE|KPROBES|KALLSYMS|KALLSYMS_ALL|MODVERSIONS|CFI_CLANG|LTO_CLANG|SHADOW_CALL_STACK|ARM64_BTI|ARM64_PTR_AUTH|STRICT_KERNEL_RWX|STRICT_MODULE_RWX|MODULE_UNLOAD|MODULE_SCMVERSION)=' target/config
+```
+
+### Что означает вывод
+
+| символ | нужно | если нет |
+|---|---|---|
+| `CONFIG_MODULES=y` | обязателен | метода нет: нет LKM-входа |
+| `CONFIG_MODULE_SIG_FORCE` | не `y` | неподписанный модуль не загрузится; обхода нет |
+| `CONFIG_KPROBES=y` | обязателен | `kallsyms_lookup_name` этим путём не резолвится |
+| `CONFIG_KALLSYMS_ALL=y` | желательно | неэкспортируемые символы могут не найтись |
+| `CONFIG_MODVERSIONS=y` | определяет CRC | нужен точный `Module.symvers`/Image |
+| `CONFIG_CFI_CLANG=y` | определяет bridge | нужен `KB_CFI=1` |
+| `CONFIG_MODULE_UNLOAD=y` | не обязателен | модуль будет «permanent»; всё равно не делай rmmod |
+
+### Рефлексия
+- **Зачем:** это gate, а не «пожелание». Без `MODULES=y` любой build — мёртвый код.
+- **Если пропустить:** соберёшь `.ko`, потратишь время, получишь «module loading disabled» или silent `-ENOEXEC`.
+- **Наблюдаем:** значения в `target/config`.
+- **Если не так:** зафиксируй точный символ и остановись; не пытайся обойти подпись/запрет.
+- **Evidence:** `target/config`, `grep` output, `uname -a`.
+
+---
+
+## Шаг 1. Собрать факты target
+
+### Зачем
+Builder должен знать **точный** вермиagic, ABI и CRC. Приблизительно — нельзя.
+
+### Команды
 
 ```sh
 tools/collect_target.sh target/
-# target/config, target/kallsyms, target/version, target/uname
+# или вручную:
+su -c 'cat /proc/kallsyms' > target/kallsyms
+su -c 'cat /proc/version' > target/version
+uname -a > target/uname
+sha256sum target/config target/kallsyms target/Image 2>/dev/null
 ```
 
-На Android нужен root для `/proc/config.gz` и `/proc/kallsyms`.
+`Image` достаётся из `boot.img`/`vendor_boot.img` твоими инструментами
+(`magiskboot`, `unpack_bootimg`, vendor dumper). Это device-specific;
+автоматически не делается.
 
-**Image:** достань несжатый kernel из `boot.img`/`vendor_boot.img` твоими
-инструментами (`magiskboot`, `unpack_bootimg`, vendor dumper). Оставь именно
-тот `Image`, который работает. Извлечение device-specific и намеренно не
-автоматизировано. Не бери Image от другой сборки.
+Vendor `.ko` — любой модуль, который **точно загружается** на устройстве:
+`/vendor/lib/modules`, vendor/KernelSU module dir. Скопируй его в `target/`.
 
-**Vendor `.ko` oracle:** возьми модуль, который точно загружается на устройстве
-(`/vendor/lib/modules`, vendor/KernelSU module dir). Проверь:
+### Что проверить
 
 ```sh
-readelf -p .modinfo vendor.ko | grep -E 'vermagic|name='
-readelf -SW vendor.ko | grep .gnu.linkonce.this_module
-readelf -rW vendor.ko | sed -n '/this_module/,/^$/p'
-readelf -sW vendor.ko | grep -E '__cfi|cfi_jt'
+readelf -p .modinfo target/vendor.ko | grep -E 'vermagic|name='
+readelf -SW target/vendor.ko | grep .gnu.linkonce.this_module
+readelf -rW target/vendor.ko | sed -n '/this_module/,/^$/p'
+readelf -sW target/vendor.ko | grep -E '__cfi|cfi_jt'
 ```
 
-Relocation offsets `init_module`/`cleanup_module` — это ABI ground truth для
-`struct module`. На reference-ядре: `0x190`/`0x3c0`, size `0x400`.
+### Рефлексия
+- **Зачем:** Image/kallsyms — источник CRC; vendor `.ko` — ABI-oracle; без них builder не должен угадывать.
+- **Если пропустить:** `verify_versions` упадёт; offsets будут неверными; init не выполнится.
+- **Наблюдаем:** vermagic, offsets, наличие `__cfi_*`.
+- **Если не так:** если vendor `.ko` нет — иди в шаг 3C (QEMU+gdb); если Image нет — нужен точный `Module.symvers` (шаг 4A).
+- **Evidence:** hashes, readelf outputs, путь к vendor `.ko`.
 
 ---
 
-## 2. Build-дерево
+## Шаг 2. Подготовить build tree
 
-Нужно дерево, достаточно близкое к running kernel для headers/kbuild. Это не
-обязательно полный vendor build, но версия/конфиг-семейство должны совпадать.
+### Зачем
+Нужны headers/kbuild **того же kernel family**. Сборка «чем-нибудь» даст несовместимый `.ko`.
+
+### Команды
 
 ```sh
 export KERNEL_SRC=$HOME/my-kernel
 export KERNEL_OUT=$HOME/my-kernel-out
 mkdir -p "$KERNEL_OUT"
-
 cp target/config "$KERNEL_OUT/.config"
 
 make -C "$KERNEL_SRC" O="$KERNEL_OUT" ARCH=arm64 LLVM=1 \
@@ -71,154 +146,171 @@ make -C "$KERNEL_SRC" O="$KERNEL_OUT" ARCH=arm64 LLVM=1 \
   CROSS_COMPILE=aarch64-linux-gnu- KCFLAGS=-Wno-error modules_prepare
 ```
 
-`olddefconfig` может выкинуть vendor-опции, потому что локальное дерево/clang
-другие. Поэтому в профиле есть **`KB_CONFIG`** — running config для решений о
-фичах (CFI, MODVERSIONS, KPROBES), отдельно от build `.config`, который нужен
-только для компиляции.
+### Почему `KB_CONFIG` отдельно
+`olddefconfig` может выкинуть vendor-опции, потому что локальный tree/clang
+другие. Поэтому:
+- `KB_CONFIG` = **running** config (из `/proc/config.gz`) — используется для решений CFI/MODVERSIONS/KPROBES;
+- `KERNEL_OUT/.config` = build config — только для компиляции.
 
-Если `modules_prepare` падает на warning-as-error — `KCFLAGS=-Wno-error` (или
-узкий `-Wno-error=<warning>`); не отключай CFI/LTO только ради сборки.
-
----
-
-## 3. Vermagic
-
-Бери точную строку из `.modinfo` vendor `.ko` или из `/proc/version` + target
-build. Там есть `SMP`, `preempt`, `mod_unload`, `modversions`, arch-suffix.
-
-Неверный vermagic → “no version magic”. Builder нормализует `.modinfo`, но
-строку не выдумывает.
+### Рефлексия
+- **Зачем:** несовпадение build/running config — частая причина «CFI есть в ядре, но модуль собран без CFI».
+- **Если пропустить:** модуль соберётся без bridge/CRC и не загрузится.
+- **Наблюдаем:** `modules_prepare` rc=0; наличие `include/generated/autoconf.h`, `Module.symvers`.
+- **Если не так:** `KCFLAGS=-Wno-error`; не отключай CFI/LTO глобально.
+- **Evidence:** log `modules_prepare`, `grep CONFIG_*` в обоих config.
 
 ---
 
-## 4. ABI `struct module` (init/exit offsets)
+## Шаг 3. ABI oracle: vermagic и `struct module`
 
-Локальное дерево может разложить `struct module` иначе (CFI/LTO/опции).
-Running kernel читает `mod->init`/`mod->exit` по фиксированным offsets.
+### Зачем
+Vendor-ядро читает `mod->init`/`mod->exit` по фиксированным offsets. Локальное
+дерево может разложить struct иначе.
 
-**С vendor `.ko`:**
+### 3A. С vendor `.ko`
 
 ```sh
-readelf -rW vendor.ko | sed -n '/this_module/,/^$/p'
-# init_module + 0 -> offset
-# cleanup_module + 0 -> offset
+readelf -rW target/vendor.ko | sed -n '/this_module/,/^$/p'
+# init_module + 0 -> 0x190 (пример reference)
+# cleanup_module + 0 -> 0x3c0 (пример reference)
 ```
 
-**Без vendor `.ko`:** QEMU+gdb на точном Image:
-
-```
-break do_init_module
-# смотри mod и mod->init; дизассемблируй do_init_module, чтобы увидеть offset
-```
-
-Передай `--init-off`/`--exit-off` (или в профиль). Builder патчит relocation
-**по имени символа** (`fix_this_module_relocs.py`), а не по «магическому» offset.
-
----
-
-## 5. `__versions` / CRC
-
-Если `CONFIG_MODVERSIONS=y`, пустая/отсутствующая `__versions` может дать
-silent `-ENOEXEC`: `CONFIG_MODULE_FORCE_LOAD` не включён. Варианты:
-
-### A. Точный `Module.symvers`
-
-Возьми `Module.symvers` из точной сборки ядра и положи в
-`$KERNEL_OUT/Module.symvers`. Лучший вариант.
-
-### B. Восстановление из `Image` + kallsyms
-
-Builder может запустить `tools/symvers_from_image.py` при
-`KB_REGENERATE_SYMVERS=1` и заданном `KB_LINK_BASE`. Он декодирует
-`__ksymtab`/`__kcrctab` из Image.
-
-`KB_LINK_BASE` — link-time адрес `_head`/`_text` для Image. Он device/build
-specific. Возьми из matching `vmlinux` (`nm vmlinux | grep ' _head\| _text'`)
-или vendor build metadata. Если установить нельзя — используй точный
-`Module.symvers`; не гадай.
-
-Финальный gate `verify_versions.py` проверяет: каждый import присутствует,
-экспортирован, CRC точный. Неверная таблица = hard fail.
-
----
-
-## 6. CFI
-
-Проверь running config:
+### 3B. Без vendor `.ko` — QEMU+gdb
 
 ```sh
-grep -E 'CONFIG_(CFI_CLANG|LTO_CLANG|SHADOW_CALL_STACK|ARM64_BTI|ARM64_PTR_AUTH)' target/config
+# загрузить точный Image в QEMU с gdb
+# break do_init_module
+# inspect mod->init; disassemble do_init_module
 ```
 
-Если `CONFIG_CFI_CLANG=y` — собирай с `KB_CFI=1` (профиль может ставить
-`KB_FORCE_CFI=1`, если build-tree config не равен running config). Bridge даёт:
+Передай `--init-off`/`--exit-off` в builder/профиль. Патч делается **по имени
+символа**, не по offset.
 
-- `init_module.cfi_jt`/`cleanup_module.cfi_jt` → `bti c; b <target>`
-- `__cfi_jt_init_module`/`__cfi_jt_cleanup_module` → указатели на них
-- `__cfi_check` → `ret`
-- `__ubsan_handle_cfi_check_fail_abort` → panic stub
-
-Vendor `cfi_init()` находит это и переписывает `mod->init/exit`. Модуль
-принимается, но **CFI-проверки для этого модуля отключаются**. Это module-local
-компромисс; грузи только доверенный код.
-
-Если CFI нет — `KB_CFI=0`, bridge не линкуется.
+### Рефлексия
+- **Зачем:** неверный offset = kernel читает NULL/мусор → init не вызывается.
+- **Если пропустить:** `insmod rc=0`, но кода нет; или panic.
+- **Наблюдаем:** relocation offsets; `this_module` size.
+- **Если не так:** вернись к vendor `.ko`/gdb; не подставляй «похожий» offset.
+- **Evidence:** `readelf -rW`, QEMU gdb log, offsets в profile.
 
 ---
 
-## 7. Профиль
+## Шаг 4. `__versions` / CRC
 
-Скопируй reference и поменяй всё:
+### Зачем
+`CONFIG_MODVERSIONS=y` + пустая `__versions` может дать silent `-ENOEXEC`
+(`CONFIG_MODULE_FORCE_LOAD` не включён).
+
+### 4A. Точный `Module.symvers`
+Положи `Module.symvers` из **точной** сборки в `$KERNEL_OUT/Module.symvers`.
+Это лучший путь.
+
+### 4B. Восстановление из Image
+
+```sh
+KB_REGENERATE_SYMVERS=1 \
+KB_LINK_BASE=0x... \
+tools/adapt_kernel.sh --profile ...
+```
+
+Builder запускает `symvers_from_image.py`, декодируя `__ksymtab/__kcrctab`.
+`KB_LINK_BASE` — link-time `_head`/`_text`; возьми из matching `vmlinux`
+(`nm vmlinux | grep ' _head\| _text'`) или vendor metadata. Не гадай.
+
+### Рефлексия
+- **Зачем:** CRC — не «версия строки», а точный ABI-хэш; неверный CRC = отказ.
+- **Если пропустить:** `no symbol version` / `disagrees about version`.
+- **Наблюдаем:** `verify_versions.py` PASS, imports count, `crc_bad=0`.
+- **Если не так:** не удаляй `__versions`; возьми точный symvers/Image.
+- **Evidence:** `Module.symvers` hash/provenance, `verify_versions` output.
+
+---
+
+## Шаг 5. CFI / MODVERSIONS
+
+### Зачем
+CFI-ядро вызывает `cfi_init()`, который ищет `__cfi_check`/`__cfi_jt_*`.
+Без bridge модуль либо не примет init, либо упадёт на rmmod.
+
+### Команды
+
+```sh
+grep -E '^CONFIG_(CFI_CLANG|LTO_CLANG|SHADOW_CALL_STACK|ARM64_BTI|ARM64_PTR_AUTH|MODVERSIONS)=' target/config
+```
+
+В профиле:
+- `KB_CFI=1` (или `KB_FORCE_CFI=1`) при CFI;
+- `KB_MODVERSIONS=1` (или `KB_FORCE_MODVERSIONS=1`) при MODVERSIONS.
+
+### Рефлексия
+- **Зачем:** bridge — ABI-мост, не «магия»; он отключает CFI **для модуля**.
+- **Если пропустить:** CFI failure / init не вызван.
+- **Наблюдаем:** `cfi: not using shadow for module ...` (нормально), затем init.
+- **Если не так:** проверь `__cfi_jt_*` в `.ko`; не отключай CFI глобально.
+- **Evidence:** config, `readelf` symbols, QEMU log.
+
+---
+
+## Шаг 6. Профиль
+
+### Зачем
+Профиль фиксирует **все** target-факты, чтобы сборка была воспроизводимой.
 
 ```sh
 cp profiles/rmx3709-5.10.236/profile.env profiles/my-device/profile.env
 ```
 
-Типичные значения:
-
 ```sh
 KB_PROFILE_NAME="my-device"
 KB_KERNEL_SRC="$HOME/my-kernel"
 KB_KERNEL_OUT="$HOME/my-kernel-out"
-KB_CONFIG="$HOME/target/config"       # running config
-KB_IMAGE="$HOME/target/Image"         # exact Image
+KB_CONFIG="$HOME/target/config"
+KB_IMAGE="$HOME/target/Image"
 KB_KALLSYMS="$HOME/target/kallsyms"
-KB_VENDOR_KO="$HOME/target/vendor.ko" # ABI oracle (или пусто + offsets)
+KB_VENDOR_KO="$HOME/target/vendor.ko"   # пусто, если используешь offsets
 KB_VERMAGIC="<exact>"
 KB_INIT_OFF=0x...
 KB_EXIT_OFF=0x...
-KB_LINK_BASE=0x...                    # только для восстановления symvers
-KB_MODULE_CFLAGS=""                   # reference audit выключен для переносимости
+KB_LINK_BASE=0x...                      # только для восстановления symvers
+KB_MODULE_CFLAGS=""                     # reference audit off
 ```
 
-Builder читает `KB_CONFIG` для фич, `KERNEL_OUT/.config` — для компиляции.
+### Рефлексия
+- **Зачем:** один файл = воспроизводимость; не надо помнить флаги.
+- **Если пропустить:** builder возьмёт build config и ошибётся с CFI.
+- **Наблюдаем:** профиль без пустых обязательных полей.
+- **Если не так:** `tools/adapt_kernel.sh --help`; проверь каждый путь.
+- **Evidence:** профиль (без секретов), `sha256` Image/kallsyms.
 
 ---
 
-## 8. Сборка + нормализация + gate
+## Шаг 7. Сборка
 
 ```sh
 tools/adapt_kernel.sh --profile profiles/my-device/profile.env --qemu
 ```
 
-Что делает builder:
+Что происходит внутри:
+1. проверка config gates;
+2. выбор CFI/MODVERSIONS;
+3. vermagic/offsets (vendor `.ko`/аргументы);
+4. symvers (exact или Image);
+5. kbuild;
+6. `fix_symtab_shndx.py`;
+7. `postprocess_common.sh` (versions/modinfo/relocs/checks);
+8. `dist/.../{kbootstrap.ko,module.zip,manifest.json}`;
+9. QEMU gate (если `--qemu`).
 
-1. проверяет `MODULES=y`, `MODULE_SIG_FORCE != y`, `KPROBES=y`;
-2. определяет CFI/MODVERSIONS из `KB_CONFIG`;
-3. берёт vermagic/offsets из `KB_VENDOR_KO` (или явных аргументов);
-4. использует точный `Module.symvers` или восстанавливает из Image/kallsyms;
-5. собирает target kbuild-деревом (`KB_CFI` как make-переменная);
-6. запускает `fix_symtab_shndx.py` (ld.lld SHN_XINDEX fix);
-7. запускает `postprocess_common.sh` (versions gate, modinfo, relocations,
-   финальные проверки);
-8. пишет `dist/.../{kbootstrap.ko,module.zip,manifest.json}`;
-9. опционально запускает QEMU payload gate.
-
-Если остановился — читай точную ошибку; не «исправляй» удалением gate.
+### Рефлексия
+- **Зачем:** builder — единственный вход; не собирай вручную «на глаз».
+- **Если пропустить:** потеряешь symtab fix/CRC/modinfo.
+- **Наблюдаем:** `PASS`, `OK kbootstrap: this_module=0x400 init=0x190 exit=0x3c0`, sha256.
+- **Если не так:** читай точную ошибку; не удаляй gate.
+- **Evidence:** build log, `manifest.json`, sha256.
 
 ---
 
-## 9. QEMU gate (до устройства)
+## Шаг 8. QEMU gate
 
 ```sh
 KB_IMAGE=$HOME/target/Image \
@@ -227,71 +319,113 @@ BUSYBOX=$HOME/ae-qemu-gate/bin/busybox \
 tests/qemu_payload_gate.sh
 ```
 
-Он поднимает точный Image с минимальным initramfs и проверяет:
-
+Проверки:
 - `insmod_rc=0`;
-- модуль live;
-- `/proc/kbootstrap` существует;
+- module live;
+- `/proc/kbootstrap`;
 - `payload_result=42`;
-- нет CFI failure на init.
+- нет CFI failure.
 
-Ожидаемый безвредный warning: `cfi: not using shadow for module kbootstrap`.
-Gate не доказывает unload/`rmmod` и hardware-specific поведение.
+### Рефлексия
+- **Зачем:** device-load — необратимый риск; QEMU ловит ABI/CFI ошибки.
+- **Если пропустить:** паника/кирпич на устройстве.
+- **Наблюдаем:** `PASS qemu payload gate`.
+- **Если не так:** `cfi: not using shadow` — норма; CFI failure — нет; смотри `serial.log`.
+- **Evidence:** QEMU log, KO sha.
 
 ---
 
-## 10. Установка на устройство
+## Шаг 9. Устройство
 
 ```sh
+# backup boot/vendor_boot!
 ksud module install dist/<profile>/module.zip
 # reboot
 cat /proc/kbootstrap
 ```
 
-`post-fs-data.sh` грузит модуль; `service.sh` пишет статус. **Не делай
-`rmmod`**: непроверенный unload/CFI путь может дать panic. Rollback = reboot.
-
-Перед установкой: backup boot/vendor_boot и знай, как восстановить. Лучше
-тестовое устройство.
-
----
-
-## Troubleshooting
-
-| симптом | причина | действие |
-|---|---|---|
-| `no symbol version` / silent `-ENOEXEC` | пустая/нет `__versions` | точный `Module.symvers` или восстановление из Image; `verify_versions.py` |
-| `disagrees about version of symbol` | неверные CRC | target Image/kallsyms; не переиспользуй чужую таблицу |
-| `no version magic` | неверный vermagic | возьми из vendor `.ko`; нормализуй `.modinfo` |
-| CFI failure при load/rmmod | нет/неверный bridge | `KB_CFI=1`, `kbootstrap_cfi*`, проверь `__cfi_jt_*` |
-| Oops `load_module+0x20d4` | `SHN_XINDEX` без `SYMTAB_SHNDX` | `fix_symtab_shndx.py` до postprocess |
-| init не вызван | неверный offset `struct module` | vendor `.ko`/gdb; патч по символу |
-| instruction abort на payload PC (`ESR 8600000f`) | NX-страница | `set_memory_x(page,1)` + повторный flush |
-| `register_kprobe` unresolved | нет `CONFIG_KPROBES`/kallsyms | метод не применим |
-| module signature error | `MODULE_SIG_FORCE=y` | обхода нет; signed/vendor path |
-| `CONFIG_MODULES=n` | нет LKM-входа | метод не применим |
+### Рефлексия
+- **Зачем:** KernelSU-модуль — доставка; reboot — активация.
+- **Если пропустить backup:** нет rollback.
+- **Наблюдаем:** `/proc/kbootstrap` с `payload_result=42`.
+- **Если не так:** reboot; не rmmod; смотри `load.log`/dmesg; вернись к QEMU.
+- **Evidence:** dmesg, proc output, module zip sha.
 
 ---
 
-## Чек-лист адаптации
+## Шаг 10. Rollback/обслуживание
 
-- [ ] точный running config (`KB_CONFIG`)
-- [ ] точный Image + kallsyms
-- [ ] vendor `.ko` oracle или QEMU/gdb offsets
-- [ ] точный vermagic
-- [ ] точный `Module.symvers` или Image+link base
-- [ ] CFI mode известен; `KB_CFI` верный
-- [ ] `MODVERSIONS` mode известен
-- [ ] пути/offsets профиля заполнены
-- [ ] builder PASS (финальный gate)
-- [ ] QEMU payload gate PASS
-- [ ] backup boot + rollback plan
-- [ ] установка на устройство только после QEMU; без `rmmod`
+- Rollback = reboot без модуля/с восстановленным boot.
+- **Не делай `rmmod`** до доказанного unload/CFI.
+- При обновлении ядра: заново собрать профиль (vermagic/CRC/offsets меняются).
+- Не переиспользуй `.ko` между ядрами.
 
-## Нельзя
+---
 
-- ставить чужой `.ko`;
-- удалять `__versions`, чтобы «загрузилось»;
-- переиспользовать CRC/offsets другого ядра;
-- глобально отключать CFI или патчить ядро только ради загрузки модуля;
-- использовать это для обхода сторонней аутентификации/DRM/CAPTCHA/paywall.
+# Часть III. Сценарии пользователя
+
+## A. Reference-устройство
+1. Скачать release `module.zip`.
+2. `ksud module install module.zip`.
+3. Reboot.
+4. `cat /proc/kbootstrap`.
+5. Если нет — `load.log`, dmesg; проверить, что ядро именно reference.
+
+## B. Другое устройство + vendor `.ko`
+1. `collect_target`.
+2. Build tree + `KB_CONFIG`.
+3. `readelf` vendor `.ko` → vermagic/offsets.
+4. Exact `Module.symvers` или Image+link base.
+5. Profile.
+6. `adapt_kernel.sh --qemu`.
+7. Install.
+
+## C. Другое устройство без vendor `.ko`
+1–2 как B.
+3. QEMU+gdb: `do_init_module`, `mod->init` offset.
+4. `--init-off/--exit-off`.
+5. Далее B.
+
+## D. CVE-патч
+1. Upstream fix commit → функция/условие.
+2. Маппинг на vendor symbol.
+3. Kprobe guard/trampoline.
+4. Build.
+5. QEMU с репродьюсером.
+6. Install.
+Подробно: `docs/CVE-PATCHING.ru.md`.
+
+---
+
+# Часть IV. Troubleshooting с рефлексией
+
+| симптом | почему | что делать | чем проверить |
+|---|---|---|---|
+| `no symbol version` / silent `-ENOEXEC` | нет/пустая `__versions`; force-load off | exact symvers/Image | `verify_versions.py` PASS |
+| `disagrees about version` | CRC не от этого ядра | target Image/kallsyms | crc_bad=0 |
+| `no version magic` | vermagic неверный | vendor `.ko`/`/proc/version` | `readelf -p .modinfo` |
+| CFI failure | нет/неверный bridge | `KB_CFI=1`, bridge objects | `__cfi_jt_*` |
+| Oops `load_module+0x20d4` | `SHN_XINDEX` без таблицы | `fix_symtab_shndx.py` | symtab fixed/N |
+| init не вызван | offset `struct module` | vendor `.ko`/gdb | gdb `mod->init` |
+| IABT payload (`8600000f`) | NX страница | `set_memory_x` + flush | `set_memory_x_rc=0` |
+| `register_kprobe` unresolved | нет KPROBES/kallsyms | метод не применим | config |
+| signature error | `SIG_FORCE` | нет обхода | config |
+
+---
+
+# Часть V. Чек-лист и запреты
+
+- [ ] `MODULES=y`, `SIG_FORCE!=y`, `KPROBES=y`
+- [ ] config/kallsyms/Image/vendor `.ko` собраны
+- [ ] build tree + `KB_CONFIG`
+- [ ] vermagic/offsets
+- [ ] exact symvers или Image+link base
+- [ ] `KB_CFI`/`KB_MODVERSIONS`
+- [ ] профиль заполнен
+- [ ] builder PASS
+- [ ] QEMU PASS
+- [ ] backup/rollback
+- [ ] install; no rmmod
+
+**Нельзя:** чужой `.ko`; удалять `__versions`; переиспользовать CRC/offsets;
+глобально отключать CFI; обходить аутентификацию/DRM/CAPTCHA/paywall.

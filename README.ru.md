@@ -134,7 +134,7 @@ syscall. MGLRU — первый feature/benchmark; CVE — вне roadmap бэк
 ## Релиз
 
 - Репозиторий: <https://github.com/kosoymiki/vendor-kernel-runtime-entry>
-- v1.0.0: <https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.0>
+- v1.0.1: <https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.1>
 
 ## Лицензия
 
