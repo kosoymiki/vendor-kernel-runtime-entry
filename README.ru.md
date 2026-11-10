@@ -33,6 +33,18 @@
 7. резолв символов через **kprobe** (`kallsyms_lookup_name` не экспортируется);
 8. пакет **KernelSU/ReSukiSU**.
 
+## Возможности (всё доказано в QEMU на reference Image)
+
+- **LKM + CFI bridge**: init/exit и callbacks модуля исполняются;
+- **kprobe/kretprobe**: резолв неэкспортируемых; наблюдение/правка аргументов;
+- **text patch**: замена живой функции + restore (`kpatch` probe);
+- **raw payload**: `module_alloc` + `set_memory_x`, `payload_result=42`;
+- **procfs/sysfs**: status/control.
+
+Полная матрица evidence: [`docs/ENTRYPOINTS.ru.md`](docs/ENTRYPOINTS.ru.md)
+([EN](docs/ENTRYPOINTS.md)). Статус MGLRU: [`docs/MGLRU.ru.md`](docs/MGLRU.ru.md)
+([EN](docs/MGLRU.md)).
+
 ## Доказательство (QEMU, exact stock Image)
 
 Panic probe — `init_module` реально исполняется:
@@ -105,12 +117,13 @@ CFI-мост отключает CFI-проверки **для этого мод�
 ## Карта репозитория
 
 ```
-kernel/      исходник модуля + CFI bridge
+kernel/      базовый модуль + CFI bridge
+modules/     kpatch (text patch probe), mglru (Stage A/B probe)
 module/      KernelSU/ReSukiSU пакет
 tools/       per-target builder, ELF/ABI/CRC gates, delta tooling
 profiles/    профили (reference: RMX3709 5.10.236)
 tests/       static checks + QEMU payload gate
-docs/        adaptation, methodology, security, backport map
+docs/        adaptation, entry matrix, MGLRU, methodology, security, backport map
 ```
 
 ## Патч CVE в рантайме
@@ -134,7 +147,7 @@ syscall. MGLRU — первый feature/benchmark; CVE — вне roadmap бэк
 ## Релиз
 
 - Репозиторий: <https://github.com/kosoymiki/vendor-kernel-runtime-entry>
-- v1.0.1: <https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.1>
+- v1.0.2: <https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.2>
 
 ## Лицензия
 

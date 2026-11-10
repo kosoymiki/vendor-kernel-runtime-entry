@@ -154,3 +154,21 @@ The entry is the base; the backport layer is separate:
 
 See `docs/BACKPORT-7.4.md` for the measured 5.10 → 7.4-rc2 delta and the
 subsystem/feature map.
+
+## 7. Text patch and probes (new)
+
+The entry matrix also includes **live text patch** and **probe modules**:
+
+- `modules/kpatch` proves save → `aarch64_insn_patch_text_nosync` replacement →
+  verify → restore of `__arm64_sys_getpid` in QEMU. `nosync` is single-CPU
+  safe only; for SMP use `aarch64_insn_patch_text`/stop_machine and verify under
+  load. A wrong patch can panic; keep a restore path.
+- `modules/mglru` is a Stage A/B reclaim probe (kprobe/kretprobe + generation
+  side table), not full MGLRU. See `docs/MGLRU.md`.
+- `docs/ENTRYPOINTS.md` is the evidence matrix (LKM/CFI, kprobe, text patch,
+  raw payload, kallsyms, procfs; BPF observe-only; ftrace/livepatch/kexec/
+  devmem/multikernel closed).
+
+CFI bridge consequence: module code, kprobe callbacks and patched functions are
+callable on the CFI vendor kernel, but CFI checks are disabled **for the
+module**. Treat the module as trusted code.

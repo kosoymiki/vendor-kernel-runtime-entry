@@ -429,3 +429,24 @@ cat /proc/kbootstrap
 
 **Нельзя:** чужой `.ko`; удалять `__versions`; переиспользовать CRC/offsets;
 глобально отключать CFI; обходить аутентификацию/DRM/CAPTCHA/paywall.
+
+---
+
+# Часть VI. Probe-модули: kpatch и mglru
+
+Тем же builder можно собрать probe-модули:
+
+```sh
+KB_MODULE_SRC=$PWD/modules/kpatch KB_MODNAME=kpatch \
+  tools/adapt_kernel.sh --profile profiles/my-device/profile.env
+
+KB_MODULE_SRC=$PWD/modules/mglru KB_MODNAME=mglru_probe \
+  tools/adapt_kernel.sh --profile profiles/my-device/profile.env
+```
+
+`kpatch` доказывает save/patch/restore живой функции. Использует
+`aarch64_insn_patch_text_nosync`; это **не SMP-safe** (только single-CPU QEMU).
+Для SMP — `aarch64_insn_patch_text`/stop_machine, проверка под нагрузкой,
+restore path. `mglru` — Stage A/B probe, не полный MGLRU; см. `docs/MGLRU.ru.md`.
+Сначала QEMU; без device-load до gate; без `rmmod`, пока restore/unload не
+доказан.

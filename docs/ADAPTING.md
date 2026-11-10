@@ -408,3 +408,24 @@ Details: `docs/CVE-PATCHING.md`.
 
 **Do not:** ship a foreign `.ko`; remove `__versions`; reuse CRCs/offsets;
 disable CFI globally; bypass authentication/DRM/CAPTCHA/paywalls.
+
+---
+
+# Part VI. Probe modules: kpatch and mglru
+
+The same builder can build the probe modules:
+
+```sh
+KB_MODULE_SRC=$PWD/modules/kpatch KB_MODNAME=kpatch \
+  tools/adapt_kernel.sh --profile profiles/my-device/profile.env
+
+KB_MODULE_SRC=$PWD/modules/mglru KB_MODNAME=mglru_probe \
+  tools/adapt_kernel.sh --profile profiles/my-device/profile.env
+```
+
+`kpatch` proves save/patch/restore of a live function. It uses
+`aarch64_insn_patch_text_nosync`; this is **not SMP-safe** (single-CPU QEMU
+only). For SMP, use `aarch64_insn_patch_text`/stop_machine, verify under load,
+and keep a restore path. `mglru` is a Stage A/B probe, not full MGLRU; see
+`docs/MGLRU.md`. QEMU first; no device load before the gate; no `rmmod` until
+restore/unload is proven.

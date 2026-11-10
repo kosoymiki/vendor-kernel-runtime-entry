@@ -34,6 +34,18 @@ and solves the real blockers around it:
 7. symbol resolution through **kprobe** (`kallsyms_lookup_name` is not exported);
 8. a **KernelSU/ReSukiSU** boot package.
 
+## Capabilities (all QEMU-proven on the reference Image)
+
+- **LKM + CFI bridge**: module init/exit and callbacks run;
+- **kprobe/kretprobe**: resolve non-exported symbols; observe/modify args;
+- **text patch**: replace a live function and restore (`kpatch` probe);
+- **raw payload**: `module_alloc` + `set_memory_x`, `payload_result=42`;
+- **procfs/sysfs**: status/control surfaces.
+
+The full evidence matrix is in [`docs/ENTRYPOINTS.md`](docs/ENTRYPOINTS.md)
+([RU](docs/ENTRYPOINTS.ru.md)). MGLRU probe status: [`docs/MGLRU.md`](docs/MGLRU.md)
+([RU](docs/MGLRU.ru.md)).
+
 ## Proof (QEMU, exact stock Image)
 
 Panic probe — `init_module` executes:
@@ -107,12 +119,13 @@ module-local ABI tradeoff, not a kernel-wide bypass.
 ## Repository map
 
 ```
-kernel/      module source + CFI bridge
+kernel/      base module source + CFI bridge
+modules/     kpatch (text patch probe), mglru (Stage A/B probe)
 module/      KernelSU/ReSukiSU package
 tools/       per-target builder, ELF/ABI/CRC gates, delta tooling
 profiles/    target profiles (reference: RMX3709 5.10.236)
 tests/       static checks + QEMU payload gate
-docs/        adaptation, methodology, security, backport map
+docs/        adaptation, entry matrix, MGLRU, methodology, security, backport map
 ```
 
 ## Patching a CVE at runtime
@@ -136,7 +149,7 @@ linked above). See [`docs/BACKPORT-7.4.md`](docs/BACKPORT-7.4.md).
 ## Release
 
 - Repository: <https://github.com/kosoymiki/vendor-kernel-runtime-entry>
-- v1.0.1: <https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.1>
+- v1.0.2: <https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.2>
 
 ## License
 
