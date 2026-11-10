@@ -1,8 +1,8 @@
 {
   "_comment": "Single source of truth for release and module metadata. tools/make_assets.py renders it into the SVGs; tools/check_versions.py enforces that nothing drifts. Bump here first, then run the checklist in docs/RELEASE.md.",
   "release": {
-    "version": "1.0.3",
-    "versionCode": 4,
+    "version": "1.0.4",
+    "versionCode": 5,
     "date": "2026-11-10"
   },
   "modules": [
@@ -35,11 +35,11 @@
     },
     {
       "name": "mglru_probe",
-      "version": "1.0.2",
+      "version": "1.0.4",
       "status": "experimental",
-      "sha256": "245b09fe5c64c0efaad9ad71d848b80608474add774a338c5ee4077b820ad719",
-      "gate": "tests/qemu_probe_gate.sh",
-      "note": "reclaim-path kprobes, scan policy modes, generation side table",
+      "sha256": "a0f4f59c3a965d0c4b6b4551ae386b82255fc4f8f7536837cd6668db563b04ad",
+      "gate": "tests/qemu_mglru_gate.sh",
+      "note": "reclaim-path kprobes + shrink_node priority policy (mode 5)",
       "dir": "modules/mglru"
     }
   ],
@@ -50,6 +50,23 @@
       "pgscan_kswapd": 5917,
       "pgscan_direct": 167,
       "log": "$PREFIX/tmp/ktramp-gate.*/serial.log"
+    },
+    "mglru": {
+      "mode0": {
+        "get_scan_count_hits": 101,
+        "page_referenced_hits": 5266,
+        "pgscan_file": 5934,
+        "pgscan_kswapd": 5768,
+        "pgscan_direct": 166
+      },
+      "mode5": {
+        "get_scan_count_hits": 102,
+        "page_referenced_hits": 4436,
+        "pgscan_file": 4880,
+        "policy_changed": 77,
+        "policy_hits": 102
+      },
+      "log": "$PREFIX/tmp/mglru-gate.*/serial.log"
     }
   }
 }

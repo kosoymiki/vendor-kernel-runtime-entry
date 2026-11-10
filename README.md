@@ -140,7 +140,7 @@ Full detail, including what text patching does *not* prove: [`docs/ENTRYPOINTS.m
 | [`kbootstrap`](kernel/) | 1.0.0 | stable probe | CFI bridge, kallsyms resolution, raw payload, `/proc` control | `payload_result=42` · `065f520b…` |
 | [`kpatch`](modules/kpatch/) | 1.0.2 | probe | save → `aarch64_insn_patch_text_nosync` → verify → restore of a syscall | `getpid 114 → 0 → 118` · `c4f9a319…` |
 | [`ktramp`](modules/ktramp/) | 1.0.3 | probe | copied-prologue trampoline replaces a whole function, then restores | `calls=113`, `pgscan_file=6084` · `bbfb599a…` |
-| [`mglru_probe`](modules/mglru/) | 1.0.2 | experimental | reclaim-path kprobes, scan policy modes, generation side table | `6/6` hooks, mode 2 `changed=305` · `245b09fe…` |
+| [`mglru_probe`](modules/mglru/) | 1.0.4 | experimental | reclaim-path kprobes + `shrink_node` priority policy | `changed=77/102`, `pgscan_file=5934` · `a0f4f59c…` |
 
 The library is the point of the project: each module is built from this tree by
 one builder, gated in QEMU, and shipped with its evidence. New backports
@@ -209,7 +209,7 @@ modes.
 | `kbootstrap.ko` | `065f520b1b562f55eef48a138a12d4df3c18d51357bcbacb39b46d1e9a33c593` | `tests/qemu_payload_gate.sh` |
 | `kpatch.ko` | `c4f9a319feb6da9d8989bbdb15903bcb6ccce4c361c1fcd1edfc237dfe5ddf11` | `tests/qemu_probe_gate.sh` |
 | `ktramp.ko` | `bbfb599a17db566dae1eb664dbafba5de1f5568bd08ac7363ca1ceefc35b55e3` | `tests/qemu_ktramp_gate.sh` |
-| `mglru_probe.ko` | `245b09fe5c64c0efaad9ad71d848b80608474add774a338c5ee4077b820ad719` | `tests/qemu_probe_gate.sh` |
+| `mglru_probe.ko` | `a0f4f59c3a965d0c4b6b4551ae386b82255fc4f8f7536837cd6668db563b04ad` | `tests/qemu_mglru_gate.sh` |
 
 Measured on QEMU with the exact stock `Image` (`-smp 1`, `maxcpus=1`):
 
@@ -222,6 +222,10 @@ Measured on QEMU with the exact stock `Image` (`-smp 1`, `maxcpus=1`):
   wrapper, 7 prologue instructions copied back; `calls=113`,
   `pgscan_file=6084`, `pgscan_kswapd=5917`, `pgscan_direct=167`, then
   `patched=0` after restore.
+- **reclaim probes:** baseline `get_scan_count` 101 hits at `pgscan_file=5934`;
+  mode 5 rewrote `scan_control.priority` in 77 of 102 `shrink_node` calls.
+  Total scan volume is *not* comparable across runs — see the caveat in
+  [`docs/MGLRU.md`](docs/MGLRU.md).
 - **payload:** `/proc/kbootstrap` reports `payload_result=42`.
 
 How the reclaim workload is generated (and why `tmpfs` does not work) is
@@ -254,6 +258,7 @@ explicit gap list; the 5.10 → 7.4 delta is measured in
 | [v1.0.1](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.1) | bilingual docs, full adaptation and CVE-patching chains |
 | [v1.0.2](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.2) | `kpatch` text-patch probe, `mglru_probe` Stage A/B, entry matrix |
 | [v1.0.3](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.3) | `ktramp` full-function trampoline, real-reclaim gate, SVG infographics, README overhaul |
+| [v1.0.4](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.4) | `mglru_probe` mode 5 priority policy, A/B reclaim gate, measured stage numbers |
 
 ## Documentation
 

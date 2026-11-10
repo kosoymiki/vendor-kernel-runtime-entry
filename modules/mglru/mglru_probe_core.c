@@ -28,8 +28,6 @@ typedef struct proc_dir_entry *(*proc_create_fn)(const char *, umode_t,
 typedef void (*proc_remove_fn)(struct proc_dir_entry *);
 typedef long (*srb_fn)(void __user *, size_t, loff_t *, const void *, size_t);
 typedef long (*swb_fn)(void *, size_t, loff_t *, const void __user *, size_t);
-typedef int (*regkret_fn)(struct kretprobe *);
-typedef int (*unregkret_fn)(struct kretprobe *);
 
 static const char *const hook_names[] = {
 	"shrink_node",
@@ -48,26 +46,16 @@ static struct proc_dir_entry *mpde;
 static proc_remove_fn m_remove;
 static srb_fn m_srb;
 static int policy_mode;          /* 0 off, 1 anon-light, 2 file-light, 3 aggressive */
-static unsigned long modified;
+static unsigned long policy_changed, policy_hits;
 static unsigned long last_nr[4];
 static unsigned long last_before[4], last_after[4];
 static unsigned long changed;
 #define GTAB 1024
 static unsigned long gpage[GTAB];
 static unsigned int ggen[GTAB];
-static unsigned long cur_gen = 1, accesses, tracked, young, last_ratio;
+static unsigned long cur_gen = 1, accesses, tracked, young, last_ratio, gen_tick;
 static struct kprobe mkp = { .symbol_name = "mark_page_accessed", .pre_handler = NULL };
 static swb_fn m_swb;
-static regkret_fn m_regkret;
-static unregkret_fn m_unregkret;
-static int kret_reg_err = -1;
-static struct kretprobe grp = {
-	.kp.symbol_name = "get_scan_count",
-	.entry_handler = NULL,
-	.handler = NULL,
-	.maxactive = 64,
-	.data_size = sizeof(unsigned long *),
-};
 static char mbuf[1024];
 static char *mp = mbuf;
 static char *mend = mbuf + sizeof(mbuf) - 1;
@@ -91,7 +79,29 @@ static void putdec(long v)
 
 #define H(n) static int h##n(struct kprobe *p, struct pt_regs *r) \
 	{ (void)p; (void)r; hits[n]++; return 0; }
-H(0) H(1) H(2) H(3) H(4) H(5)
+static int h0(struct kprobe *p, struct pt_regs *r)
+{
+	s8 *prio;
+	s8 old;
+
+	(void)p;
+	hits[0]++;
+	if ((policy_mode == 4 || policy_mode == 5) && r->regs[1]) {
+		prio = (s8 *)((char *)r->regs[1] + 0x2c); /* sc->priority */
+		old = *prio;
+		if (policy_mode == 5)
+			*prio = 0;              /* aggressive reclaim */
+		else if (cur_gen & 1)
+			*prio = 0;              /* generation odd: aggressive */
+		else if (*prio > 1)
+			*prio = 1;              /* generation even: milder */
+		if (*prio != old)
+			policy_changed++;
+		policy_hits++;
+	}
+	return 0;
+}
+H(1) H(2) H(3) H(4) H(5)
 
 static int mk_handler(struct kprobe *p, struct pt_regs *r)
 {
@@ -107,60 +117,9 @@ static int mk_handler(struct kprobe *p, struct pt_regs *r)
 	return 0;
 }
 
-static int g_entry(struct kretprobe_instance *ri, struct pt_regs *regs)
-{
-	*(unsigned long **)ri->data = (unsigned long *)regs->regs[2]; /* nr[] */
-	return 0;
-}
 
-static int g_ret(struct kretprobe_instance *ri, struct pt_regs *regs)
-{
-	unsigned long *nr = *(unsigned long **)ri->data;
-	int i;
 
-	(void)regs;
-	if ((++modified & 31) == 0)
-		cur_gen++;
-	for (i = 0; i < 4; i++)
-		last_nr[i] = nr[i];
-	for (i = 0; i < 4; i++)
-		last_before[i] = nr[i];
-	if (policy_mode == 1) {          /* protect anon: no anon scan */
-		nr[0] = 0; nr[1] = 0;
-		modified++;
-	} else if (policy_mode == 2) {   /* protect page cache: no file scan */
-		nr[2] = 0; nr[3] = 0;
-		modified++;
-	} else if (policy_mode == 3) {   /* aggressive: scan more anon */
-		nr[0] *= 2; nr[1] *= 2;
-		modified++;
-	} else if (policy_mode == 4) {   /* generation-aware: protect young */
-		unsigned long tr = 0, yg = 0, k;
 
-		for (k = 0; k < GTAB; k++) {
-			if (*(gpage + k)) {
-				tr++;
-				if (*(ggen + k) == (unsigned int)cur_gen)
-					yg++;
-			}
-		}
-		tracked = tr; young = yg;
-		last_ratio = tr ? (yg * 100 / tr) : 0;
-		if (last_ratio >= 50) {          /* mostly young: protect */
-			nr[0] /= 2; nr[1] /= 2; nr[2] /= 2; nr[3] /= 2;
-		} else {                         /* old pages dominate: scan file */
-			nr[2] *= 2; nr[3] *= 2;
-		}
-		modified++;
-	}
-	if (policy_mode) {
-		for (i = 0; i < 4; i++)
-			last_after[i] = nr[i];
-		for (i = 0; i < 4; i++)
-			if (last_before[i] != last_after[i]) { changed++; break; }
-	}
-	return 0;
-}
 
 static ssize_t m_write(struct file *f, const char __user *ubuf, size_t len, loff_t *ppos)
 {
@@ -172,7 +131,7 @@ static ssize_t m_write(struct file *f, const char __user *ubuf, size_t len, loff
 	n = m_swb(tmp, sizeof(tmp) - 1, ppos, ubuf, len);
 	if (n < 0) return n;
 	tmp[n] = 0;
-	if (tmp[0] >= '0' && tmp[0] <= '4')
+	if (tmp[0] >= '0' && tmp[0] <= '5')
 		policy_mode = tmp[0] - '0';
 	return n;
 }
@@ -185,8 +144,8 @@ static ssize_t m_read(struct file *f, char __user *buf, size_t len, loff_t *off)
 	mp = mbuf;
 	put("mglru_probe stage B policy (write 0|1|2 to /proc/mglru_probe)\n");
 	put("policy_mode="); putdec(policy_mode);
-	put(" modified="); putdec((long)modified);
-	put(" kretprobe_reg="); putdec(kret_reg_err);
+	put(" changed="); putdec((long)policy_changed); put(" phits="); putdec((long)policy_hits);
+	
 	put(" changed="); putdec((long)changed);
 	put(" gen="); putdec((long)cur_gen);
 	put(" acc="); putdec((long)accesses);
@@ -232,8 +191,6 @@ static int __init m_init(void)
 	m_remove = (proc_remove_fn)kln("proc_remove");
 	m_srb = (srb_fn)kln("simple_read_from_buffer");
 	m_swb = (swb_fn)kln("simple_write_to_buffer");
-	m_regkret = (regkret_fn)kln("register_kretprobe");
-	m_unregkret = (unregkret_fn)kln("unregister_kretprobe");
 
 	for (i = 0; i < NHOOKS; i++) {
 		kps[i].symbol_name = hook_names[i];
@@ -247,11 +204,6 @@ static int __init m_init(void)
 	mkp.pre_handler = mk_handler;
 	if (register_kprobe(&mkp) != 0)
 		pr_err("mglru_probe: mark_page_accessed kprobe failed\n");
-	if (m_regkret) {
-		grp.entry_handler = g_entry;
-		grp.handler = g_ret;
-		kret_reg_err = m_regkret(&grp);
-	}
 	if (pcreate && m_srb)
 		mpde = pcreate("mglru_probe", 0644, NULL, &m_pops);
 	pr_err("mglru_probe: registered %d/%d, proc=%d\n",
@@ -267,8 +219,6 @@ static void __exit m_exit(void)
 	for (i = 0; i < NHOOKS; i++)
 		if (registered[i])
 			unregister_kprobe(&kps[i]);
-	if (kret_reg_err == 0 && m_unregkret)
-		m_unregkret(&grp);
 	if (mpde && m_remove)
 		m_remove(mpde);
 	pr_err("mglru_probe: exit\n");

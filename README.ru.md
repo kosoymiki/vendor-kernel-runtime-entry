@@ -143,7 +143,7 @@ CFI-мост — самая интересная часть. `__cfi_check` не�
 | [`kbootstrap`](kernel/) | 1.0.0 | stable probe | CFI-мост, резолв kallsyms, raw payload, `/proc` | `payload_result=42` · `065f520b…` |
 | [`kpatch`](modules/kpatch/) | 1.0.2 | probe | save → `aarch64_insn_patch_text_nosync` → проверка → restore | `getpid 114 → 0 → 118` · `c4f9a319…` |
 | [`ktramp`](modules/ktramp/) | 1.0.3 | probe | трамплин с копированием пролога заменяет функцию целиком | `calls=113`, `pgscan_file=6084` · `bbfb599a…` |
-| [`mglru_probe`](modules/mglru/) | 1.0.2 | экспериментальный | kprobe на reclaim path, режимы политики, side table поколений | `6/6` хуков, mode 2 `changed=305` · `245b09fe…` |
+| [`mglru_probe`](modules/mglru/) | 1.0.4 | экспериментальный | kprobe на reclaim path + политика приоритета `shrink_node` | `changed=77/102`, `pgscan_file=5934` · `a0f4f59c…` |
 
 Смысл проекта — именно библиотека: каждый модуль собирается из этого дерева
 одним builder'ом, проходит QEMU-гейт и поставляется вместе со своим evidence.
@@ -212,7 +212,7 @@ tools/adapt_kernel.sh --profile profiles/my-device/profile.env --qemu
 | `kbootstrap.ko` | `065f520b1b562f55eef48a138a12d4df3c18d51357bcbacb39b46d1e9a33c593` | `tests/qemu_payload_gate.sh` |
 | `kpatch.ko` | `c4f9a319feb6da9d8989bbdb15903bcb6ccce4c361c1fcd1edfc237dfe5ddf11` | `tests/qemu_probe_gate.sh` |
 | `ktramp.ko` | `bbfb599a17db566dae1eb664dbafba5de1f5568bd08ac7363ca1ceefc35b55e3` | `tests/qemu_ktramp_gate.sh` |
-| `mglru_probe.ko` | `245b09fe5c64c0efaad9ad71d848b80608474add774a338c5ee4077b820ad719` | `tests/qemu_probe_gate.sh` |
+| `mglru_probe.ko` | `a0f4f59c3a965d0c4b6b4551ae386b82255fc4f8f7536837cd6668db563b04ad` | `tests/qemu_mglru_gate.sh` |
 
 Измерено в QEMU на точном стоковом `Image` (`-smp 1`, `maxcpus=1`):
 
@@ -224,6 +224,10 @@ tools/adapt_kernel.sh --profile profiles/my-device/profile.env --qemu
 - **трамплин:** вход `get_scan_count` заменён ветвлением в обёртку модуля,
   7 инструкций пролога скопированы обратно; `calls=113`, `pgscan_file=6084`,
   `pgscan_kswapd=5917`, `pgscan_direct=167`, после restore `patched=0`.
+- **reclaim-probes:** baseline `get_scan_count` 101 hits при `pgscan_file=5934`;
+  mode 5 переписал `scan_control.priority` в 77 из 102 вызовов `shrink_node`.
+  Суммарный объём сканирования **не** сравним между прогонами — см. оговорку в
+  [`docs/MGLRU.ru.md`](docs/MGLRU.ru.md).
 - **payload:** `/proc/kbootstrap` отдаёт `payload_result=42`.
 
 Как именно создаётся reclaim-нагрузка (и почему `tmpfs` не работает) —
@@ -256,6 +260,7 @@ QEMU и явным списком пробелов; дельта 5.10 → 7.4 и
 | [v1.0.1](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.1) | двуязычная документация, полные цепочки адаптации и CVE |
 | [v1.0.2](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.2) | `kpatch` (text patch), `mglru_probe` Stage A/B, матрица входа |
 | [v1.0.3](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.3) | `ktramp` (трамплин), real-reclaim гейт, SVG-инфографика, новый README |
+| [v1.0.4](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.4) | `mglru_probe` mode 5 (политика приоритета), A/B reclaim-гейт, измеренные числа стадии |
 
 ## Документация
 
