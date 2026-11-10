@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="460" viewBox="0 0 1280 460" role="img" aria-labelledby="t d">
+<title id="t">Roadmap</title>
+<desc id="d">Staged path from a proven entry to 7.4 feature parity.</desc>
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#070b16"/><stop offset="55%" stop-color="#0b1224"/>
+    <stop offset="100%" stop-color="#070b16"/>
+  </linearGradient>
+  <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#22d3ee"/><stop offset="100%" stop-color="#a78bfa"/>
+  </linearGradient>
+  <linearGradient id="cardg" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#121f38" stop-opacity="0.95"/>
+    <stop offset="100%" stop-color="#0f1a2e" stop-opacity="0.95"/>
+  </linearGradient>
+  <radialGradient id="glowc"><stop offset="0" stop-color="#22d3ee" stop-opacity="0.28"/>
+    <stop offset="100%" stop-color="#22d3ee" stop-opacity="0"/></radialGradient>
+  <radialGradient id="glowv"><stop offset="0" stop-color="#a78bfa" stop-opacity="0.26"/>
+    <stop offset="100%" stop-color="#a78bfa" stop-opacity="0"/></radialGradient>
+  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+    <path d="M40 0H0V40" fill="none" stroke="#1b2740" stroke-width="1" stroke-opacity="0.5"/>
+  </pattern>
+  <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7"
+          orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#8fa3bf"/></marker>
+  <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+    <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000" flood-opacity="0.35"/>
+  </filter>
+</defs>
+<rect width="1280" height="460" fill="url(#bg)"/>
+<rect width="1280" height="460" fill="url(#grid)" opacity="0.35"/>
+<circle cx="153" cy="0" r="409" fill="url(#glowc)"/>
+<circle cx="1177" cy="460" r="358" fill="url(#glowv)"/>
+<text x="64" y="64" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12" fill="#22d3ee" font-weight="700" letter-spacing="3">ROADMAP</text>
+<text x="64" y="104" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="30" fill="#e8eefb" font-weight="800">From runtime entry to real feature backports</text>
+<text x="64" y="132" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" fill="#8fa3bf" font-weight="400">Each stage is gated on QEMU evidence; no stage is claimed before it is measured.</text>
+<path d="M96 258 H1184" stroke="#22314e" stroke-width="3"/>
+<path d="M96 258 H660" stroke="#34d399" stroke-width="3"/>
+<path d="M660 258 H900" stroke="#fbbf24" stroke-width="3"/>
+<circle cx="120" cy="258" r="13" fill="#070b16" stroke="#34d399" stroke-width="3"/>
+<circle cx="120" cy="258" r="5" fill="#34d399"/>
+<text x="120" y="226" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="12" fill="#34d399" font-weight="700" text-anchor="middle">M0</text>
+<text x="120" y="300" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14.5" fill="#e8eefb" font-weight="700" text-anchor="middle">Entry proven</text>
+<text x="120" y="320" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#8fa3bf" font-weight="400" text-anchor="middle">LKM + CFI bridge,</text>
+<text x="120" y="335" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#8fa3bf" font-weight="400" text-anchor="middle">raw payload</text>
+<text x="120" y="372" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="10.5" fill="#34d399" font-weight="600" text-anchor="middle">done</text>
+<circle cx="340" cy="258" r="13" fill="#070b16" stroke="#34d399" stroke-width="3"/>
+<circle cx="340" cy="258" r="5" fill="#34d399"/>
+<text x="340" y="226" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="12" fill="#34d399" font-weight="700" text-anchor="middle">M1</text>
+<text x="340" y="300" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14.5" fill="#e8eefb" font-weight="700" text-anchor="middle">Text patch</text>
+<text x="340" y="320" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#8fa3bf" font-weight="400" text-anchor="middle">save / patch / restore</text>
+<text x="340" y="335" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#8fa3bf" font-weight="400" text-anchor="middle">of getpid</text>
+<text x="340" y="372" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="10.5" fill="#34d399" font-weight="600" text-anchor="middle">done</text>
+<circle cx="560" cy="258" r="13" fill="#070b16" stroke="#34d399" stroke-width="3"/>
+<circle cx="560" cy="258" r="5" fill="#34d399"/>
+<text x="560" y="226" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="12" fill="#34d399" font-weight="700" text-anchor="middle">M2</text>
+<text x="560" y="300" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14.5" fill="#e8eefb" font-weight="700" text-anchor="middle">Trampoline</text>
+<text x="560" y="320" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#8fa3bf" font-weight="400" text-anchor="middle">get_scan_count replaced,</text>
+<text x="560" y="335" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#8fa3bf" font-weight="400" text-anchor="middle">426 calls, restore</text>
+<text x="560" y="372" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="10.5" fill="#34d399" font-weight="600" text-anchor="middle">done</text>
+<circle cx="790" cy="258" r="13" fill="#070b16" stroke="#fbbf24" stroke-width="3"/>
+<circle cx="790" cy="258" r="5" fill="#fbbf24"/>
+<text x="790" y="226" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="12" fill="#fbbf24" font-weight="700" text-anchor="middle">M3</text>
+<text x="790" y="300" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14.5" fill="#e8eefb" font-weight="700" text-anchor="middle">Policy hooks</text>
+<text x="790" y="320" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#8fa3bf" font-weight="400" text-anchor="middle">reclaim policy modes,</text>
+<text x="790" y="335" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#8fa3bf" font-weight="400" text-anchor="middle">generation side table</text>
+<text x="790" y="372" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="10.5" fill="#fbbf24" font-weight="600" text-anchor="middle">in progress</text>
+<circle cx="1010" cy="258" r="13" fill="#070b16" stroke="#64748b" stroke-width="3"/>
+<circle cx="1010" cy="258" r="5" fill="#64748b"/>
+<text x="1010" y="226" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="12" fill="#64748b" font-weight="700" text-anchor="middle">M4</text>
+<text x="1010" y="300" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14.5" fill="#e8eefb" font-weight="700" text-anchor="middle">7.4 backport</text>
+<text x="1010" y="320" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#8fa3bf" font-weight="400" text-anchor="middle">vmscan functions,</text>
+<text x="1010" y="335" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#8fa3bf" font-weight="400" text-anchor="middle">folio/workingset</text>
+<text x="1010" y="372" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="10.5" fill="#64748b" font-weight="600" text-anchor="middle">next</text>
+<circle cx="1200" cy="258" r="13" fill="#070b16" stroke="#64748b" stroke-width="3"/>
+<circle cx="1200" cy="258" r="5" fill="#64748b"/>
+<text x="1200" y="226" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="12" fill="#64748b" font-weight="700" text-anchor="middle">M5</text>
+<text x="1200" y="300" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14.5" fill="#e8eefb" font-weight="700" text-anchor="middle">Parity</text>
+<text x="1200" y="320" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#8fa3bf" font-weight="400" text-anchor="middle">benchmarks + gap</text>
+<text x="1200" y="335" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#8fa3bf" font-weight="400" text-anchor="middle">report</text>
+<text x="1200" y="372" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="10.5" fill="#64748b" font-weight="600" text-anchor="middle">planned</text>
+<rect x="64" y="398" width="1152" height="44" rx="12" fill="#0b1424" stroke="#1e2b45" stroke-width="1"/>
+<text x="84" y="425" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12.5" fill="#c9d7ea" font-weight="400">Hard rule: a probe is not a backport. Stage M3/M4 land only with QEMU behavior evidence and an explicit gap list.</text>
+</svg>
