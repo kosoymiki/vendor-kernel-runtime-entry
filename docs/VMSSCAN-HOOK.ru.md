@@ -63,7 +63,7 @@ my_shrink_lruvec(lruvec, sc)                    [модуль]
 
 ## Наблюдения в QEMU (stock `Image`, 512 MiB, без swap)
 
-`tests/qemu_vmscan_hook_gate.sh`, модуль sha `996ec6fd…` (собран дважды из одного
+`tests/qemu_vmscan_hook_gate.sh`, v1.6.0 build (собран дважды из одного
 профиля — одна и та же байтовая строка оба раза):
 
 ```
@@ -123,7 +123,7 @@ vh_off=0 kt_off=0 vh_rm=0 kt_rm=0 vh_gone kt_gone vh_mod_gone kt_mod_gone
 первым вытесняется самое старое поколение — порядок MGLRU на реальных списках,
 без структур `lru_gen`.
 
-QEMU (`tests/qemu_vmscan_hook_gate.sh`, модуль sha `996ec6fd…`):
+QEMU (`tests/qemu_vmscan_hook_gate.sh`, модуль sha `a366be99…`):
 
 ```
 poll=18 pgscan=9045
@@ -135,6 +135,22 @@ restore_rc=0 ... rmmod_rc=0 proc_gone module_gone
 `moved` велик, потому что сортировка идёт на каждом вызове `shrink_lruvec`;
 распределение по bucket'ам показывает горячие страницы (5743+865) в хвосте, а
 старые/без доступа (8902107) — в голове.
+
+## Stage I — сортировка всех четырёх evictable-списков
+
+Сортировка теперь покрывает `LRU_INACTIVE_ANON`, `LRU_ACTIVE_ANON`,
+`LRU_INACTIVE_FILE`, `LRU_ACTIVE_FILE`: старые active-страницы первыми
+демотируются `shrink_active_list`, а головы inactive-списков несут самое
+старое поколение. QEMU (`sha a366be99…`): `calls=88`, `scans=20791`,
+`moved=9266019`, `buckets=12383,2586,1209,9249841`, `pgscan_file=9578`,
+restore/unload чистые.
+
+Folio-замечание: таблицы нормализуют compound-head (`compound_head()`), но это
+vendor-ядро в QEMU не производит compound-страниц на LRU — `enabled_store()`
+скомпилирован вне `CONFIG_CONT_PTE_HUGEPAGE` (`mm/huge_memory.c:204`), запись
+резолвнутого символа `transparent_hugepage_flags` не изменила sysfs-значение,
+а `AnonHugePages` остался `0 kB` (`compound=0`). Нормализация покрыта
+unit-тестом; QEMU-доказательство folio на этом образе недоступно.
 
 ## Ограничения (честно)
 

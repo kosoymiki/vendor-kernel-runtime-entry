@@ -62,7 +62,7 @@ rotation window (default `50` ms). Read back `hooked`, `calls`, `scans`,
 
 ## Observed in QEMU (stock `Image`, 512 MiB, swapless)
 
-`tests/qemu_vmscan_hook_gate.sh`, module sha `996ec6fd…` (built twice from the
+`tests/qemu_vmscan_hook_gate.sh`, v1.6.0 build (built twice from the
 same profile, one byte string both times):
 
 ```
@@ -121,7 +121,7 @@ list oldest-first. The kernel scanner takes from the head, so the oldest
 generation is evicted first — MGLRU's ordering on the real lists, without
 `lru_gen` structures.
 
-QEMU (`tests/qemu_vmscan_hook_gate.sh`, module sha `996ec6fd…`):
+QEMU (`tests/qemu_vmscan_hook_gate.sh`, module sha `a366be99…`):
 
 ```
 poll=18 pgscan=9045
@@ -133,6 +133,23 @@ restore_rc=0 ... rmmod_rc=0 proc_gone module_gone
 `moved` is large because the sort runs on every `shrink_lruvec` call; the
 bucket split shows the hot pages (5743+865) at the tail and old/never-accessed
 pages (8902107) at the head.
+
+## Stage I — sort over all four evictable lists
+
+The sort now covers `LRU_INACTIVE_ANON`, `LRU_ACTIVE_ANON`,
+`LRU_INACTIVE_FILE`, `LRU_ACTIVE_FILE`, so old active pages are demoted first
+by `shrink_active_list`, and the file/anon inactive heads carry the oldest
+generation. QEMU (`sha a366be99…`): `calls=88`, `scans=20791`,
+`moved=9266019`, `buckets=12383,2586,1209,9249841`, `pgscan_file=9578`,
+restore/unload clean.
+
+Folio note: the page tables normalize compound heads (`compound_head()`), but
+this vendor image produces no compound LRU pages in QEMU — `enabled_store()`
+is compiled out under `CONFIG_CONT_PTE_HUGEPAGE` (`mm/huge_memory.c:204`),
+writing the resolved `transparent_hugepage_flags` symbol did not change the
+sysfs-visible value, and `AnonHugePages` stayed `0 kB` (`compound=0`). The
+normalization remains unit-tested; the QEMU folio proof is not available on
+this image.
 
 ## Limits (honest)
 

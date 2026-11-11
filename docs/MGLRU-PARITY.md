@@ -24,7 +24,7 @@ as structure** — the data structure is not replaced (side table instead).
 | refault threshold | compared to `max_seq - min_seq` | `32 * window`, window scaled by adaptive ttl | approximate |
 | adaptive `min_ttl` | ms-based `min_ttl_ms` | ttl 2..4 from refault/eviction thrash | approximate |
 | per-generation LRU lists | `lru_gen` lists | module sorts the kernel's inactive lists into 4 age buckets, oldest-first, under `lru_lock`; no `lru_gen` structures | approximate (real list order) |
-| folio paths | multi-order folios | head-page normalization; probes receive head pages | partial |
+| folio paths | multi-order folios | head-page normalization in the module tables; QEMU produces no compound LRU pages (vendor THP runtime-disabled) | partial (unit-tested) |
 | text patch / SMP safety | n/a | `aarch64_insn_patch_text` (stop_machine), restore | **exact** |
 | custom `shrink_lruvec` (vmscan entry) | source rebuild | `vmscan_hook`: module function replaces `shrink_lruvec`, calls kernel `shrink_active_list`/`shrink_inactive_list` | **exact entry point**, approximate loop |
 | observability | tracepoints | kprobes + vendor tracepoint; counters in `/proc` | **exact** |

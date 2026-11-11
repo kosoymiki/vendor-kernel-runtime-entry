@@ -175,7 +175,7 @@ Full detail, including what text patching does *not* prove: [`docs/ENTRYPOINTS.m
 | [`kpatch`](modules/kpatch/) | 1.0.2 | probe | save → `aarch64_insn_patch_text_nosync` → verify → restore of a syscall | `getpid 114 → 0 → 118` · `c4f9a319…` |
 | [`ktramp`](modules/ktramp/) | 1.3.0 | experimental | Stage G M5: adaptive ttl 2..4, eviction-age branches 8/9, scan-epoch clock | branch 8 `a80`, branch 9 `a10` 51.1%, `y80` 51.0%, `t5` 100%, `tdist=848` · `e688ddc3…` |
 | [`mglru_probe`](modules/mglru/) | 1.0.6 | experimental | reclaim-path kprobes + real `scan_control.priority` policy (0x2b), clean rmmod | `changed=11/11`, `gt0=11`, `pgscan=6071/2464` · `754d20b9…` |
-| [`vmscan_hook`](modules/vmscan_hook/) | 1.2.0 | experimental | custom `shrink_lruvec` + generation-bucket sort (oldest-first) on inactive lists | `calls=89`, `scans=19583`, `moved=8.9M`, `buckets=5743/865/0/8.9M`, `pgscan=9045` · `996ec6fd…` |
+| [`vmscan_hook`](modules/vmscan_hook/) | 1.3.0 | experimental | custom `shrink_lruvec` + generation-bucket sort over all four evictable lists (oldest-first) | `calls=88`, `scans=20791`, `moved=9.3M`, `buckets=12383/2586/1209/9.2M`, `pgscan=9578` · `a366be99…` |
 
 The library is the point of the project: each module is built from this tree by
 one builder, gated in QEMU, and shipped with its evidence. New backports
@@ -254,7 +254,7 @@ modes.
 | `kpatch.ko` | `c4f9a319feb6da9d8989bbdb15903bcb6ccce4c361c1fcd1edfc237dfe5ddf11` | `tests/qemu_probe_gate.sh` |
 | `ktramp.ko` | `e688ddc30758321a8bc6fb5110529c13af8ee8adc363d70829cef064007fddc2` | `tests/qemu_ktramp_gate.sh` |
 | `mglru_probe.ko` | `754d20b990bcd022e8766cbe79676eec847dcdfe50e05f99af660dcddf940ea4` | `tests/qemu_mglru_gate.sh` |
-| `vmscan_hook.ko` | `996ec6fde754bed693fe1818db9f6d4131594808212e071be743b69dd99410dc` | `tests/qemu_vmscan_hook_gate.sh` |
+| `vmscan_hook.ko` | `a366be997e7a5e7d7c76b6c45f2452cd5fc12eebd1ac84cea4a7635e56eb33e8` | `tests/qemu_vmscan_hook_gate.sh` |
 
 Measured on QEMU with the exact stock `Image` (`-smp 1`, `maxcpus=1`):
 
@@ -332,6 +332,7 @@ explicit gap list; the 5.10 → 7.4 delta is measured in
 | [v1.4.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.4.0) | stack gate: `ktramp` policy + `vmscan_hook` custom `shrink_lruvec` compose under real reclaim (`calls=112`, `scans=8579`, `pgscan=8210`), restore/unload clean |
 | [v1.5.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.5.0) | `vmscan_hook` young-page rotation (`moved=8323`, `ttl_ms=20000`) |
 | [v1.6.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.6.0) | Stage H: generation-bucket sort of inactive lists (oldest-first), `buckets=5743/865/0/8.9M`, `pgscan=9045` |
+| [v1.7.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.7.0) | Stage I: sort over all four evictable lists, folio head normalization, THP runtime-disabled evidence |
 | [v1.5.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.5.0) | `vmscan_hook` 1.1.0 young-page rotation (`moved`, `ttl_ms`), rebuild-identical `.ko`, reworked hero, five new infographics, gate extended to packaged `dist/` metadata |
 
 ## Documentation

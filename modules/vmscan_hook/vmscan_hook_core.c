@@ -18,6 +18,7 @@
 #include <linux/jiffies.h>
 #include <linux/spinlock.h>
 #include <linux/list.h>
+#include <linux/page-flags.h>
 
 #define SC_NR_TO_RECLAIM 0x00UL
 #define SC_BITS          0x28UL
@@ -47,7 +48,7 @@ static unsigned long target;		/* shrink_lruvec */
 static u32 orig0;
 static int hooked;
 static unsigned long calls, scans, reclaimed_pages, moved, ttl_ms = 50;
-static unsigned long sb[4];
+static unsigned long sb[4], compound;
 static patch_fn do_patch;
 static struct proc_dir_entry *vpde;
 static char vbuf[512];
@@ -66,17 +67,19 @@ static int ak_reg;
 
 static void g_store(unsigned long page, unsigned long t)
 {
-	unsigned long i = (page >> 12) & (GENN - 1);
+	struct page *p = compound_head((struct page *)page);
+	unsigned long i = ((unsigned long)p >> 12) & (GENN - 1);
 
-	gpage[i] = page;
+	gpage[i] = (unsigned long)p;
 	gtime[i] = t;
 }
 
 static unsigned long g_load(unsigned long page)
 {
-	unsigned long i = (page >> 12) & (GENN - 1);
+	struct page *p = compound_head((struct page *)page);
+	unsigned long i = ((unsigned long)p >> 12) & (GENN - 1);
 
-	return gpage[i] == page ? gtime[i] : 0;
+	return gpage[i] == (unsigned long)p ? gtime[i] : 0;
 }
 
 static int a_handler(struct kprobe *p, struct pt_regs *r)
@@ -106,7 +109,7 @@ static void rotate_young(struct lruvec *lv)
 	if (!ttl)
 		ttl = 1;
 	spin_lock_irqsave(&pgdat->lru_lock, flags);
-	for (lru = 0; lru <= 2; lru += 2) {
+	for (lru = 0; lru <= 3; lru++) {
 		LIST_HEAD(b0); LIST_HEAD(b1); LIST_HEAD(b2); LIST_HEAD(b3);
 		LIST_HEAD(ord);
 
@@ -114,6 +117,8 @@ static void rotate_young(struct lruvec *lv)
 			unsigned long t = g_load((unsigned long)page);
 			unsigned long age = t ? now - t : ~0UL;
 
+			if (PageCompound(page))
+				compound++;
 			if (age < ttl) b = 0;
 			else if (age < 2 * ttl) b = 1;
 			else if (age < 4 * ttl) b = 2;
@@ -237,7 +242,7 @@ static ssize_t v_read(struct file *f, char __user *buf, size_t len, loff_t *off)
 	put_(" hooked="); putdec_(hooked);
 	put_(" calls="); putdec_((long)calls);
 	put_(" scans="); putdec_((long)scans);
-	put_(" reclaimed="); putdec_((long)reclaimed_pages); put_(" moved="); putdec_((long)moved); put_(" buckets="); putdec_((long)sb[0]); put_(","); putdec_((long)sb[1]); put_(","); putdec_((long)sb[2]); put_(","); putdec_((long)sb[3]); put_(" ttl_ms="); putdec_((long)ttl_ms);
+	put_(" reclaimed="); putdec_((long)reclaimed_pages); put_(" moved="); putdec_((long)moved); put_(" compound="); putdec_((long)compound); put_(" buckets="); putdec_((long)sb[0]); put_(","); putdec_((long)sb[1]); put_(","); putdec_((long)sb[2]); put_(","); putdec_((long)sb[3]); put_(" ttl_ms="); putdec_((long)ttl_ms);
 	put_("\n");
 	return simple_read_from_buffer(buf, len, off, vbuf, (size_t)(vp - vbuf));
 }

@@ -39,7 +39,7 @@ Offsets (verified by `scprobe`): `nr_to_reclaim 0x00`, bits `0x28`,
 ## Observed (QEMU, stock Image, 512 MiB, swapless)
 
 Gate: `tests/qemu_vmscan_hook_gate.sh`, module 1.1.0, sha256
-`996ec6fde754bed693fe1818db9f6d4131594808212e071be743b69dd99410dc`
+`a366be997e7a5e7d7c76b6c45f2452cd5fc12eebd1ac84cea4a7635e56eb33e8`
 (built twice from the same profile; one byte string both times).
 
 ```
@@ -71,13 +71,22 @@ vh_off=0 kt_off=0 vh_rm=0 kt_rm=0 vh_gone kt_gone vh_mod_gone kt_mod_gone
 `policy_applied=64` means every custom-loop call received a policy-written scan
 target; `moved=5175` shows rotation still runs while the trampoline is active.
 
+## Stage I — all four evictable lists + folio note
+
+The sort covers inactive and active anon/file lists; old active pages demote
+first. Tables normalize compound heads, but this vendor image produces no
+compound LRU pages in QEMU (THP store compiled out under
+`CONFIG_CONT_PTE_HUGEPAGE`; `AnonHugePages=0`), so the folio proof is
+unit-tested, not QEMU-exercised. QEMU: `calls=88`, `scans=20791`,
+`moved=9266019`, `buckets=12383,2586,1209,9249841`, `pgscan=9578`.
+
 ## Stage H — generation-bucket sort
 
 `rotate_young` buckets the inactive anon/file lists by age (`<1 ttl`, `<2 ttl`,
 `<4 ttl`, `>=4 ttl` / never accessed) and rebuilds them oldest-first under
 `pgdat->lru_lock`, so the kernel scanner evicts the oldest generation first.
 
-QEMU (`tests/qemu_vmscan_hook_gate.sh`, sha `996ec6fd…`):
+QEMU (`tests/qemu_vmscan_hook_gate.sh`, sha `a366be99…`):
 
 ```
 poll=18 pgscan=9045
