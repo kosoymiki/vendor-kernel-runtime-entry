@@ -25,6 +25,21 @@ proven entry.
   vendor tracepoint (`seq`, `window=min(seq,2)`), window-scaled refault
   threshold (`32*window`), young/cold classification by epoch. Details:
   [`MGLRU-STAGE-F.md`](MGLRU-STAGE-F.md).
+- **Stage K (`ktramp` 1.4.0):** per-memcg resident generation histogram
+  (`mgres`), `min_seq` from empty oldest buckets, `window = max_seq - min_seq`
+  in the refault threshold.
+  Each scan epoch shifts the histogram (`i -> i+1`, bucket 3 saturates), so a
+  bucket index is a generation age; without the shift `min_seq` collapses to
+  `seq` (degenerate).
+  Gate: `tests/qemu_ktramp_stagek_gate.sh` asserts the structural invariant
+  `min_seq in [seq-3, seq]`, a non-empty histogram, `window >= seq - min_seq`
+  and (cold boot) `min_seq < seq` on two boots (cold, refault); the earlier
+  "min never advanced" bug produced `min=0` with `seq=65` and fails this gate.
+- **Stage L/M (`ktramp` 1.5.0):** hot-page bloom filter per generation,
+  tiered generation scanning (oldest non-empty generation decides), and the
+  `min_ttl` floor (`m<ms>`), with branches 10/11/12 and
+  `bloom=set,hit,miss,rot`, `ttlfloor=`. Gate:
+  `tests/qemu_ktramp_stageL_gate.sh`.
 - **Stage G (M5, `ktramp` 1.3.0):** adaptive ttl 2..4 from the
   refault/eviction ratio, 4-bucket eviction-age histogram, policy branches 8/9
   (old evictions -> full scan, young evictions -> protect). Details:

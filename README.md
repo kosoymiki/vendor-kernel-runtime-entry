@@ -173,7 +173,7 @@ Full detail, including what text patching does *not* prove: [`docs/ENTRYPOINTS.m
 |---|---|---|---|---|
 | [`kbootstrap`](kernel/) | 1.0.0 | stable probe | CFI bridge, kallsyms resolution, raw payload, `/proc` control | `payload_result=42` · `065f520b…` |
 | [`kpatch`](modules/kpatch/) | 1.0.2 | probe | save → `aarch64_insn_patch_text_nosync` → verify → restore of a syscall | `getpid 114 → 0 → 118` · `c4f9a319…` |
-| [`ktramp`](modules/ktramp/) | 1.3.0 | experimental | Stage G M5: adaptive ttl 2..4, eviction-age branches 8/9, scan-epoch clock | branch 8 `a80`, branch 9 `a10` 51.1%, `y80` 51.0%, `t5` 100%, `tdist=848` · `e688ddc3…` |
+| [`ktramp`](modules/ktramp/) | 1.5.0 | experimental | Stage K/L/M: resident generation histogram + `min_seq`/window clock, hot-page bloom, tiered generation scan, `min_ttl` floor | `res`/`min`/`win`, `bloom=`, `ttlfloor=` live; Stage-K and Stage-L/M gates · `edf1d550…` |
 | [`mglru_probe`](modules/mglru/) | 1.0.6 | experimental | reclaim-path kprobes + real `scan_control.priority` policy (0x2b), clean rmmod | `changed=11/11`, `gt0=11`, `pgscan=6071/2464` · `754d20b9…` |
 | [`vmscan_hook`](modules/vmscan_hook/) | 1.4.0 | experimental | custom `shrink_lruvec`, four-list generation sort, `shrink_node_memcgs` entry hook (trampoline + priority boost) | `sn_calls=2`, `sn_boost=1`, `pgscan=2144`; sort `moved=9.3M` · `20ec5b71…` |
 
@@ -222,7 +222,7 @@ Every build runs the ELF/ABI/CRC gates and prints `PASS` per artifact:
 ```
 ktramp.ko   entries=5  imports=4  crc_bad=0  not_exported=0
 OK ktramp: this_module=000400 init=0000000000000190 exit=00000000000003c0
-sha256 e688ddc30758321a8bc6fb5110529c13af8ee8adc363d70829cef064007fddc2
+sha256 edf1d550520bf540d71ae4271dce051a109789d2f6d00ebcc7e4d7841c82b698
 ```
 
 ## Adapt to your device
@@ -252,7 +252,7 @@ modes.
 |---|---|---|
 | `kbootstrap.ko` | `065f520b1b562f55eef48a138a12d4df3c18d51357bcbacb39b46d1e9a33c593` | `tests/qemu_payload_gate.sh` |
 | `kpatch.ko` | `c4f9a319feb6da9d8989bbdb15903bcb6ccce4c361c1fcd1edfc237dfe5ddf11` | `tests/qemu_probe_gate.sh` |
-| `ktramp.ko` | `e688ddc30758321a8bc6fb5110529c13af8ee8adc363d70829cef064007fddc2` | `tests/qemu_ktramp_gate.sh` |
+| `ktramp.ko` | `edf1d550520bf540d71ae4271dce051a109789d2f6d00ebcc7e4d7841c82b698` | `tests/qemu_ktramp_gate.sh` |
 | `mglru_probe.ko` | `754d20b990bcd022e8766cbe79676eec847dcdfe50e05f99af660dcddf940ea4` | `tests/qemu_mglru_gate.sh` |
 | `vmscan_hook.ko` | `20ec5b71b590f712561a4c4c62e499ebcb06f4453004e7069c3b68e21ce53623` | `tests/qemu_vmscan_hook_gate.sh` |
 
@@ -263,11 +263,14 @@ Measured on QEMU with the exact stock `Image` (`-smp 1`, `maxcpus=1`):
   `init_module+0x1c/0xfe8 [kbootstrap]` in the trace — `init_module` really ran.
 - **text patch:** `__arm64_sys_getpid` saved, patched to `mov w0,#0; ret`,
   returned `0`, restored, returned `118`.
-- **trampoline (Stage G):** `get_scan_count` entry replaced with a branch into
-  the module wrapper; scan-epoch clock `seq=123`, `ttl=2`; cold cache takes
-  branch 7 (full scan), forced young `y80` branch 6 (51.0%), forced distance
-  `t5` branch 1 (100%), forced old/young evictions branches 8/9 (51.1%),
-  real refault branch 2 (`tdist=848`); restore and unload clean.
+- **trampoline (Stage G/K/L/M):** `get_scan_count` entry replaced with a branch
+  into the module wrapper; scan-epoch clock `seq=89`, `ttl=2`; cold cache takes
+  branch 7 (full scan), forced young `y80` branch 6 (51.1%), forced distance
+  `t5` branch 1 (100%), forced old/young evictions branches 8/9 (51.7%), real
+  refault branch 2 (`refaults=32`, `dist=849`); resident clock
+  `res=0,0,0,24430`, `min=86`, `win=3`; hot-page bloom `set=24704`,
+  `hit=5016`; tiered branches 10/11 (`167/2`) with the `min_ttl` floor
+  (`m60000` → branch 12, `ttlfloor=647`); restore and unload clean.
 - **custom vmscan:** `vmscan_hook` replaces `shrink_lruvec` with a module
   function that calls the kernel's `shrink_active_list`/`shrink_inactive_list`
   and rotates young file pages to the LRU tail instead of reclaiming them:
@@ -312,6 +315,7 @@ the same script that runs in CI. The checklist behind the diagram is
 | M3 policy hooks | **done** | Stage E generation-tier policy, shadow refault distance, SMP-safe patching, restore/unload |
 | M4 7.4 backport | **done** | Stage F: per-memcg scan-epoch clock (`seq`/`win`), window-scaled refault threshold, young/cold by epoch |
 | M5 parity | **done** | adaptive ttl, eviction-age branches, custom `shrink_lruvec` entry, fidelity gap report |
+| M6 resident clock | **done** | Stage K: per-memcg 4-bucket resident generation histogram, aging shift, `min_seq`/`window` clock |
 
 A probe is not a backport. M3/M4 landed with QEMU behaviour evidence and an
 explicit gap list; the 5.10 → 7.4 delta is measured in
@@ -334,6 +338,8 @@ explicit gap list; the 5.10 → 7.4 delta is measured in
 | [v1.6.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.6.0) | Stage H: generation-bucket sort of inactive lists (oldest-first), `buckets=5743/865/0/8.9M`, `pgscan=9045` |
 | [v1.7.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.7.0) | Stage I: sort over all four evictable lists, folio head normalization, THP runtime-disabled evidence |
 | [v1.8.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.8.0) | Stage J: `shrink_node_memcgs` entry hook (copied-prologue trampoline, priority boost), `sn_calls=2`, `pgscan=2144` |
+| [v2.0.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v2.0.0) | Stage K/L/M: generation clock (`min_seq`/window), hot-page bloom filter, tiered generation scan, `min_ttl` floor — functional MGLRU parity |
+| [v1.9.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.9.0) | Stage K: per-memcg resident generation histogram, `min_seq`/window clock |
 | [v1.5.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.5.0) | `vmscan_hook` 1.1.0 young-page rotation (`moved`, `ttl_ms`), rebuild-identical `.ko`, reworked hero, five new infographics, gate extended to packaged `dist/` metadata |
 
 ## Documentation

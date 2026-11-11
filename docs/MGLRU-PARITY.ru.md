@@ -23,6 +23,10 @@ structure** — структура не заменяется (side table вме�
 | refault distance | shadow timestamp против `nonresident_age` | идентично: `shadow >> 19`, `lruvec+96`, 46-битная маска | **exact** |
 | порог refault | сравнение с `max_seq - min_seq` | `32 * window`, окно масштабируется адаптивным ttl | approximate |
 | адаптивный `min_ttl` | `min_ttl_ms` в миллисекундах | ttl 2..4 из отношения refault/eviction | approximate |
+| bloom-фильтр горячих страниц | bloom-фильтры `lru_gen` | per-memcg 4x64-бит фильтра, ротация с гистограммой; счётчики hit/miss | approximate (64-бит на поколение, не на tier) |
+| ярусное сканирование поколений | скан от самого старого поколения | ветки 10/11 по самому старому резидентному поколению + доля bloom-hit | approximate (счётчики скана, не обход списков) |
+| порог `min_ttl` | поколенческий порог `min_ttl_ms` | возраст эпохи по `jiffies`, управление `m<ms>`, ветка 12 | approximate (возраст эпохи, не страницы) |
+| резидентная гистограмма поколений | размеры списков `lru_gen` | per-memcg 4-bucket счётчики, стареющие на один bucket за scan-эпоху (bucket 3 насыщается); `min_seq` из самого старого непустого bucket | approximate (разрешение 4 bucket, без per-page generation-тегов) |
 | per-generation LRU-списки | списки `lru_gen` | модуль сортирует inactive-списки ядра в 4 возрастных bucket'а, oldest-first, под `lru_lock`; структур `lru_gen` нет | approximate (реальный порядок списков) |
 | folio-пути | multi-order folios | нормализация head-страниц в таблицах модуля; QEMU не производит compound-страниц на LRU (r2-доказанный vendor-гейт THP/CHP init) | partial (unit-tested) |
 | патч текста / SMP | n/a | `aarch64_insn_patch_text` (stop_machine), restore | **exact** |
@@ -60,9 +64,13 @@ structure** — структура не заменяется (side table вме�
 5. **Folio tails.** `isolate_lru_pages` отбрасывает tail-страницы
    (`mm/vmscan.c:1953`), поэтому probe вытеснения/refault всегда получают head;
    нормализация tail→head покрыта unit-тестом, но не QEMU.
-6. **Без пересборки исходников.** Модули хукают/заменяют функции (`kpatch`,
-   `ktramp`, kprobes) и не меняют образ ядра; полный source-backport MGLRU
-   остаётся задачей сборки ядра, а не LKM.
+6. **Функциональный паритет, не пересборка исходников.** Модули реализуют
+   набор механизмов MGLRU вне `mm/` — shadow-теги поколений, резидентную
+   гистограмму и часы `min_seq`, bloom горячих страниц, ярусный скан
+   поколений, порог `min_ttl` и refault-окно — хукая/заменяя функции
+   (`kpatch`, `ktramp`, kprobes) и не меняя образ ядра. Перенос списков
+   `lru_gen` внутрь `mm/` остаётся задачей сборки ядра, потому что исходников
+   7.4 для вендорного образа нет.
 
 ## Карта evidence
 
@@ -73,6 +81,7 @@ structure** — структура не заменяется (side table вме�
 | E | `docs/MGLRU-STAGE-E.ru.md` | `tests/qemu_ktramp_gate.sh` |
 | F | `docs/MGLRU-STAGE-F.ru.md` | `tests/qemu_ktramp_gate.sh` |
 | G | `docs/MGLRU-STAGE-G.ru.md` | `tests/qemu_ktramp_gate.sh` |
+| K (резидентные часы) | `docs/MGLRU.ru.md` | `tests/qemu_ktramp_stagek_gate.sh` |
 | вход vmscan | `docs/VMSSCAN-HOOK.ru.md` | `tests/qemu_vmscan_hook_gate.sh` |
 
 Дельта файлов/LOC 5.10 → 7.4 и матрица фич — в

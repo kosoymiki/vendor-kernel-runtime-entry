@@ -23,6 +23,10 @@ as structure** — the data structure is not replaced (side table instead).
 | refault distance | shadow timestamp vs `nonresident_age` | identical: `shadow >> 19`, `lruvec+96`, 46-bit mask | **exact** |
 | refault threshold | compared to `max_seq - min_seq` | `32 * window`, window scaled by adaptive ttl | approximate |
 | adaptive `min_ttl` | ms-based `min_ttl_ms` | ttl 2..4 from refault/eviction thrash | approximate |
+| hot-page bloom filter | `lru_gen` bloom filters | per-memcg 4x64-bit filters, rotated with the histogram; hit/miss counters | approximate (64-bit filter per generation, not per-tier) |
+| tiered generation scanning | oldest-generation-first scan | branch 10/11 driven by oldest resident generation + bloom hit ratio | approximate (scan counts, not list walking) |
+| `min_ttl` floor | `min_ttl_ms` generation floor | epoch age from `jiffies`, `m<ms>` control, branch 12 | approximate (epoch age, not per-page age) |
+| per-generation resident histogram | `lru_gen` list sizes | per-memcg 4-bucket resident counts, aged one bucket per scan epoch (bucket 3 saturates); `min_seq` from the oldest non-empty bucket | approximate (4-bucket resolution, no per-page generation tags) |
 | per-generation LRU lists | `lru_gen` lists | module sorts the kernel's inactive lists into 4 age buckets, oldest-first, under `lru_lock`; no `lru_gen` structures | approximate (real list order) |
 | folio paths | multi-order folios | head-page normalization in the module tables; QEMU produces no compound LRU pages (r2-proven vendor THP/CHP init gate) | partial (unit-tested) |
 | text patch / SMP safety | n/a | `aarch64_insn_patch_text` (stop_machine), restore | **exact** |
@@ -60,9 +64,13 @@ as structure** — the data structure is not replaced (side table instead).
 5. **Folio tails.** `isolate_lru_pages` rejects tail pages
    (`mm/vmscan.c:1953`), so eviction/refault probes always receive head pages;
    the tail→head normalization is unit-tested, not exercised by QEMU.
-6. **No source rebuild.** The modules hook/replace functions (`kpatch`,
-   `ktramp`, kprobes) and never modify the kernel image; a full MGLRU source
-   backport remains a kernel-build task, not an LKM one.
+6. **Functional parity, not a source rebuild.** The modules implement the
+   MGLRU mechanism set outside `mm/` — shadow generation tags, the resident
+   histogram and `min_seq` clock, hot-page bloom filters, tiered generation
+   scanning, the `min_ttl` floor and the refault window — by hooking/replacing
+   functions (`kpatch`, `ktramp`, kprobes) and never modifying the kernel
+   image. Moving `lru_gen` lists into `mm/` itself remains a kernel-build task
+   because the vendor Image ships no 7.4 sources.
 
 ## Evidence map
 
@@ -73,6 +81,7 @@ as structure** — the data structure is not replaced (side table instead).
 | E | `docs/MGLRU-STAGE-E.md` | `tests/qemu_ktramp_gate.sh` |
 | F | `docs/MGLRU-STAGE-F.md` | `tests/qemu_ktramp_gate.sh` |
 | G | `docs/MGLRU-STAGE-G.md` | `tests/qemu_ktramp_gate.sh` |
+| K (resident clock) | `docs/MGLRU.md` | `tests/qemu_ktramp_stagek_gate.sh` |
 | vmscan entry | `docs/VMSSCAN-HOOK.md` | `tests/qemu_vmscan_hook_gate.sh` |
 
 The 5.10 → 7.4 file/LOC delta and the feature matrix are in

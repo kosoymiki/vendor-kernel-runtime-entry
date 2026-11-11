@@ -175,7 +175,7 @@ CFI-мост — самая интересная часть. `__cfi_check` не�
 |---|---|---|---|---|
 | [`kbootstrap`](kernel/) | 1.0.0 | stable probe | CFI-мост, резолв kallsyms, raw payload, `/proc` | `payload_result=42` · `065f520b…` |
 | [`kpatch`](modules/kpatch/) | 1.0.2 | probe | save → `aarch64_insn_patch_text_nosync` → проверка → restore | `getpid 114 → 0 → 118` · `c4f9a319…` |
-| [`ktramp`](modules/ktramp/) | 1.3.0 | экспериментальный | Stage G M5: адаптивный ttl 2..4, ветки возраста 8/9, часы scan-эпох | ветка 8 `a80`, ветка 9 `a10` 51.1%, `y80` 51.0%, `t5` 100%, `tdist=848` · `e688ddc3…` |
+| [`ktramp`](modules/ktramp/) | 1.5.0 | экспериментальный | Stage K/L/M: резидентная гистограмма поколений + `min_seq`/window-часы, bloom горячих страниц, ярусный скан поколений, порог `min_ttl` | `res`/`min`/`win`, `bloom=`, `ttlfloor=` live; гейты Stage-K и Stage-L/M · `edf1d550…` |
 | [`mglru_probe`](modules/mglru/) | 1.0.6 | экспериментальный | kprobe на reclaim path + реальная политика `scan_control.priority` (0x2b), чистый rmmod | `changed=11/11`, `gt0=11`, `pgscan=6071/2464` · `754d20b9…` |
 | [`vmscan_hook`](modules/vmscan_hook/) | 1.4.0 | экспериментальный | кастомный `shrink_lruvec`, четырёхсписковая сортировка, entry-хук `shrink_node_memcgs` (трамплин + priority boost) | `sn_calls=2`, `sn_boost=1`, `pgscan=2144`; sort `moved=9.3M` · `20ec5b71…` |
 
@@ -225,7 +225,7 @@ KB_MODULE_SRC=$PWD/modules/ktramp KB_MODNAME=ktramp \
 ```
 ktramp.ko   entries=5  imports=4  crc_bad=0  not_exported=0
 OK ktramp: this_module=000400 init=0000000000000190 exit=00000000000003c0
-sha256 e688ddc30758321a8bc6fb5110529c13af8ee8adc363d70829cef064007fddc2
+sha256 edf1d550520bf540d71ae4271dce051a109789d2f6d00ebcc7e4d7841c82b698
 ```
 
 ## Адаптация под своё устройство
@@ -254,7 +254,7 @@ tools/adapt_kernel.sh --profile profiles/my-device/profile.env --qemu
 |---|---|---|
 | `kbootstrap.ko` | `065f520b1b562f55eef48a138a12d4df3c18d51357bcbacb39b46d1e9a33c593` | `tests/qemu_payload_gate.sh` |
 | `kpatch.ko` | `c4f9a319feb6da9d8989bbdb15903bcb6ccce4c361c1fcd1edfc237dfe5ddf11` | `tests/qemu_probe_gate.sh` |
-| `ktramp.ko` | `e688ddc30758321a8bc6fb5110529c13af8ee8adc363d70829cef064007fddc2` | `tests/qemu_ktramp_gate.sh` |
+| `ktramp.ko` | `edf1d550520bf540d71ae4271dce051a109789d2f6d00ebcc7e4d7841c82b698` | `tests/qemu_ktramp_gate.sh` |
 | `mglru_probe.ko` | `754d20b990bcd022e8766cbe79676eec847dcdfe50e05f99af660dcddf940ea4` | `tests/qemu_mglru_gate.sh` |
 | `vmscan_hook.ko` | `20ec5b71b590f712561a4c4c62e499ebcb06f4453004e7069c3b68e21ce53623` | `tests/qemu_vmscan_hook_gate.sh` |
 
@@ -265,11 +265,14 @@ tools/adapt_kernel.sh --profile profiles/my-device/profile.env --qemu
   `init_module+0x1c/0xfe8 [kbootstrap]` — `init_module` действительно выполнился.
 - **text patch:** первые инструкции `__arm64_sys_getpid` сохранены, записан
   `mov w0,#0; ret`, `getpid` вернул `0`, после restore — `118`.
-- **трамплин (Stage G):** вход `get_scan_count` заменён ветвлением в обёртку
-  модуля; часы scan-эпох `seq=123`, `ttl=2`; холодный кэш — ветка 7 (полный
-  скан), форс young `y80` — ветка 6 (51.0%), форс distance `t5` — ветка 1
-  (100%), форс старых/молодых вытеснений — ветки 8/9 (51.1%), реальный refault
-  — ветка 2 (`tdist=848`); restore и unload чистые.
+- **трамплин (Stage G/K/L/M):** вход `get_scan_count` заменён ветвлением в
+  обёртку модуля; часы scan-эпох `seq=89`, `ttl=2`; холодный кэш — ветка 7
+  (полный скан), форс young `y80` — ветка 6 (51.1%), форс distance `t5` —
+  ветка 1 (100%), форс старых/молодых вытеснений — ветки 8/9 (51.7%),
+  реальный refault — ветка 2 (`refaults=32`, `dist=849`); резидентные часы
+  `res=0,0,0,24430`, `min=86`, `win=3`; bloom горячих страниц `set=24704`,
+  `hit=5016`; ярусные ветки 10/11 (`167/2`) и порог `min_ttl`
+  (`m60000` → ветка 12, `ttlfloor=647`); restore и unload чистые.
 - **кастомный vmscan:** `vmscan_hook` заменяет `shrink_lruvec` функцией модуля,
   которая вызывает штатные `shrink_active_list`/`shrink_inactive_list` и
   ротирует молодые file-страницы в хвост LRU вместо их reclaim:
@@ -313,6 +316,7 @@ tools/adapt_kernel.sh --profile profiles/my-device/profile.env --qemu
 | M3 policy hooks | **готово** | Stage E поколенческая политика, shadow refault distance, SMP-safe патчинг, restore/unload |
 | M4 бэкпорт 7.4 | **готово** | Stage F: per-memcg часы scan-эпох (`seq`/`win`), порог refault по окну, young/cold по эпохе |
 | M5 parity | **готово** | адаптивный ttl, ветки возраста, вход кастомного `shrink_lruvec`, gap-report точности |
+| M6 резидентные часы | **готово** | Stage K: per-memcg 4-bucket резидентная гистограмма поколений, сдвиг старения, часы `min_seq`/`window` |
 
 Probe — это не бэкпорт. M3/M4 закрыты с поведенческим evidence и явным gap-list;
 QEMU и явным списком пробелов; дельта 5.10 → 7.4 измерена в
@@ -335,6 +339,8 @@ QEMU и явным списком пробелов; дельта 5.10 → 7.4 и
 | [v1.6.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.6.0) | Stage H: поколенческая сортировка inactive-списков (oldest-first), `buckets=5743/865/0/8.9M`, `pgscan=9045` |
 | [v1.7.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.7.0) | Stage I: сортировка всех четырёх evictable-списков, folio head normalization, evidence про runtime-выключенный THP |
 | [v1.8.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.8.0) | Stage J: entry-хук `shrink_node_memcgs` (трамплин с копированием пролога, priority boost), `sn_calls=2`, `pgscan=2144` |
+| [v2.0.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v2.0.0) | Stage K/L/M: часы поколений (`min_seq`/window), bloom горячих страниц, ярусный скан поколений, порог `min_ttl` — функциональный паритет MGLRU |
+| [v1.9.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.9.0) | Stage K: per-memcg резидентная гистограмма поколений, `min_seq`/window-часы |
 | [v1.5.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.5.0) | `vmscan_hook` 1.1.0: ротация молодых страниц (`moved`, `ttl_ms`), воспроизводимый `.ko`, переработанная шапка, пять новых инфографик, гейт расширен на `module.prop` в `dist/` |
 
 ## Документация

@@ -65,11 +65,14 @@ Run it top to bottom; nothing here is optional.
    SVG by hand; the gate re-renders all ten from `versions.json` and compares
    the bytes.
 10. **Gate:** `python3 tools/check_versions.py && bash tests/static_checks.sh`.
-11. **Rebuild `module.zip`** and copy the new `module.prop` into
-    `dist/out-kbootstrap/module/` before zipping. Stale `dist/out-*` trees are
-    moved to `dist/attic-<date>/` first — the gate checks every packaged
-    `module.prop` under `dist/` and fails on a stale one.
-12. **Write `SHA256SUMS`** over the release artifacts in `dist/release-v<ver>/`.
+11. **Package the release:** `tools/package_release.sh [version]` — it verifies
+    every built `.ko` against `versions.json` (a stale artifact is a hard fail),
+    copies the five `.ko` files, refreshes every `dist/out-*/module/module.prop`,
+    stages `module/bin/kbootstrap.ko`, writes `module.zip`, `manifest.json` and
+    `SHA256SUMS` into `dist/release-v<ver>/`. Run it from a clean `dist/`: an
+    existing release directory must be moved to `dist/attic-<date>/` first.
+12. **Verify** the release directory against `versions.json` (`sha256sum -c
+    dist/release-v<ver>/SHA256SUMS`) and the packaged `module.prop`.
 13. **Commit, tag, release** (`gh release create …`), then verify **CI success
     and a fresh clone passing the static gate**.
 

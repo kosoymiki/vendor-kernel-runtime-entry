@@ -36,6 +36,7 @@ static void *tramp;
 static void (*tramp_fn)(void*,void*,void*);
 static unsigned long calls, refaults, patched, last_dist, dist_sum, sum_nr, nr_calls, policy_applied;
 static int policy_on;
+static int policy_mode;   /* 2 = Stage E/G/K policy, 3 = Stage L/M bloom+tiered+ttl floor */
 static unsigned long cur_gen = 1, gen_tick;
 #define LVN 256
 static unsigned long lvkey[LVN], lvacc[LVN], lvgen[LVN], lvref[LVN], lvdist[LVN];
@@ -50,9 +51,16 @@ static int ak_reg;
 static unsigned long mgkey[MGN], mggen[MGN], mgref[MGN], mgscan[MGN];
 static unsigned long mgseq[MGN], mgwin[MGN];   /* per-memcg scan-epoch clock */
 static unsigned long mgev[MGN], mgttl[MGN], ev_age[MGN][4]; /* thrash + eviction age */
+static unsigned long mgres[MGN][4], mgmin[MGN]; /* resident generation histogram + min_seq */
+static unsigned long mgbloom[MGN][4];          /* per-generation hot-page bloom filter */
+static unsigned long bloom_set, bloom_hit, bloom_miss, bloom_rot;
+static unsigned long mg_ep_jif[MGN];           /* jiffies of the current scan epoch per memcg */
+static unsigned long *jiffies_p;
+static unsigned long min_ttl_ms = 1000;        /* MGLRU min_ttl floor (ms) */
+static unsigned long ttl_floor_hits;
 static unsigned long last_seq, last_win, last_ttl;
 static int last_mgi = -1;
-static unsigned long mgattr_exact, mgattr_fb, folio_heads, dist_hist[4], branch_hist[10];
+static unsigned long mgattr_exact, mgattr_fb, folio_heads, dist_hist[4], branch_hist[13];
 static unsigned long snap_sum, snap_pol, snap_sum2, snap_pol2; /* fixed endpoints: calls 1..20 and 1..40 */
 static void *cur_memcg;
 static unsigned long tp_seq, last_tp_seq, last_kref;
@@ -98,6 +106,27 @@ static void ev_store(unsigned long page, unsigned long gen)
 static unsigned long ev_load(unsigned long page)
 {
 	return kt_ev_load(epage, egen, EVN, page);
+}
+
+/* MGLRU hot-page bloom filter: one 64-bit filter per generation bucket. A
+ * page that was accessed in a generation gets its bit set; the filters rotate
+ * with the histogram, so a hit means "this page was hot in that generation". */
+static inline unsigned long bloom_bit(unsigned long page)
+{
+	return ((page >> 12) * 0x9E3779B1UL) & 63UL;
+}
+static inline void bloom_add(int mi, unsigned long page)
+{
+	unsigned long b;
+	if (mi < 0) return;
+	b = bloom_bit(page);
+	(*(mgbloom[mi] + 0)) |= (1UL << b);
+	bloom_set++;
+}
+static inline int bloom_test(int mi, int bucket, unsigned long page)
+{
+	if (mi < 0) return 0;
+	return (int)(((*(mgbloom[mi] + bucket)) >> bloom_bit(page)) & 1UL);
 }
 
 /* Folio registry: compound tails share the head page's generation. */
@@ -155,8 +184,18 @@ static int a_handler(struct kprobe *p, struct pt_regs *r)
 	page=folio_head(page);
 	{
 		unsigned long memcg=*(unsigned long *)(page+offsetof(struct page, mem_cgroup));
+		unsigned long old=ev_load(page), ns;
+		int b;
 		mi=mg_find(memcg);
-		ev_store(page, (mi>=0 && *(mgseq+mi)) ? *(mgseq+mi) : (cur_gen ? cur_gen : 1));
+		ns=(mi>=0 && *(mgseq+mi)) ? *(mgseq+mi) : (cur_gen ? cur_gen : 1);
+		if(mi>=0 && old){
+			unsigned long a=ns>old?ns-old:0;
+			b=a==0?0:a==1?1:a==2?2:3;
+			if(*(mgres[mi]+b)) (*(mgres[mi]+b))--;
+		}
+		if(mi>=0) (*(mgres[mi]+0))++;
+		bloom_add(mi, page);
+		ev_store(page, ns);
 	}
 	if(page_to_lruvec_fn && contig_pgdat){
 		struct lruvec *plv=page_to_lruvec_fn((struct page *)page, contig_pgdat);
@@ -182,6 +221,9 @@ static int ev_handler(struct kprobe *p, struct pt_regs *r)
 			int b = a==0 ? 0 : a==1 ? 1 : a==2 ? 2 : 3;
 			(*(mgev+mgi))++;
 			(*(ev_age[mgi]+b))++;
+			if(eg && *(mgres[mgi]+b)) (*(mgres[mgi]+b))--;
+			if (bloom_test(mgi, b, page)) bloom_hit++;
+			else bloom_miss++;
 		}
 		mi=lv_for_memcg(memcg);
 		if(mi<0) mi=cur_lv;
@@ -221,7 +263,9 @@ static void wrap(void *lv, void *sc, void *nr)
 			mi = mg_find(memcg);
 			if (mi >= 0) {
 				last_seq = *(mgseq + mi);
-				last_win = *(mgwin + mi) ? *(mgwin + mi) : 1;
+				last_win = (last_seq > *(mgmin + mi)) ? (last_seq - *(mgmin + mi)) : 1;
+				if (last_win < (*(mgwin + mi) ? *(mgwin + mi) : 1))
+					last_win = *(mgwin + mi) ? *(mgwin + mi) : 1;
 				last_ttl = *(mgttl + mi) ? *(mgttl + mi) : 2;
 				last_mgi = mi;
 				gen = (int)((last_seq ? last_seq : *(mggen + mi)) & 1);
@@ -245,8 +289,36 @@ static void wrap(void *lv, void *sc, void *nr)
 				aa = *(ev_age[mi]+0) + *(ev_age[mi]+1) + ao;
 			}
 			if (force_aa) { ao = force_ao; aa = force_aa; }
-			kt_policy_nr(n, d, 32UL * last_ttl, gen, can_swap, y, c, ao, aa, &branch);
-			if (branch > 0 && branch < 10)
+			if (policy_mode == 3 && mi >= 0) {
+				/* Stage L/M: tiered generation scanning + hot-page bloom +
+				 * MGLRU min_ttl floor. Oldest non-empty generation decides:
+				 * hot evictions -> protect the working set (10); cold
+				 * evictions -> full scan of the oldest generation (11);
+				 * a page evicted inside min_ttl_ms -> defer (12). */
+				unsigned long hot_all = bloom_hit + bloom_miss;
+				unsigned long hot_pct = hot_all ? (bloom_hit * 100 / hot_all) : 0;
+				unsigned long oldest = *(mgres[mi] + 3);
+				unsigned long now = jiffies_p ? *jiffies_p : 0;
+				unsigned long epj = *(mg_ep_jif + mi);
+				/* MGLRU min_ttl: a generation younger than min_ttl_ms is not
+				 * evicted yet, so pressure inside that window is deferred. */
+				int floor = (now && epj && (now - epj) < ((min_ttl_ms * HZ) / 1000));
+				if (floor) {
+					n[2] /= 2; n[3] /= 2;
+					branch = 12;
+					ttl_floor_hits++;
+				} else if (oldest && hot_pct >= 60) {
+					n[2] /= 2; n[3] /= 2;
+					branch = 10;
+				} else if (oldest && hot_pct < 40) {
+					branch = 11;
+				} else {
+					kt_policy_nr(n, d, 32UL * (last_ttl > last_win ? last_ttl : last_win), gen, can_swap, y, c, ao, aa, &branch);
+				}
+			} else {
+				kt_policy_nr(n, d, 32UL * (last_ttl > last_win ? last_ttl : last_win), gen, can_swap, y, c, ao, aa, &branch);
+			}
+			if (branch > 0 && branch < 13)
 				branch_hist[branch]++;
 		}
 		pre_total += pre;
@@ -339,9 +411,30 @@ static void tp_memcg_probe(void *data, void *memcg, bool *skip)
 	mi = mg_find((unsigned long)memcg);
 	if (mi >= 0) {
 		(*(mgseq + mi))++;
+		/* Age the resident histogram: a page resident in generation g is at
+		 * age seq-g, so every seq increment shifts bucket i -> i+1 and bucket 3
+		 * saturates. Without this shift accesses only ever land in bucket 0 and
+		 * min_seq collapses to seq (the pre-fix degenerate behaviour). */
+		(*(mgres[mi]+3)) += (*(mgres[mi]+2));
+		(*(mgres[mi]+2)) = (*(mgres[mi]+1));
+		(*(mgres[mi]+1)) = (*(mgres[mi]+0));
+		(*(mgres[mi]+0)) = 0;
+		(*(mgbloom[mi]+3)) |= (*(mgbloom[mi]+2));
+		(*(mgbloom[mi]+2)) = (*(mgbloom[mi]+1));
+		(*(mgbloom[mi]+1)) = (*(mgbloom[mi]+0));
+		(*(mgbloom[mi]+0)) = 0;
+		bloom_rot++;
+		if (jiffies_p) *(mg_ep_jif + mi) = *jiffies_p;
 		(*(mgwin + mi)) = (*(mgseq + mi)) > 2 ? 2 : (*(mgseq + mi));
 		*(mgttl + mi) = kt_ttl_step(*(mgev + mi), *(mgref + mi),
 					    *(mgttl + mi));
+		{
+			unsigned long sq = *(mgseq + mi), mn = sq;
+			if (*(mgres[mi]+3)) mn = sq > 3 ? sq - 3 : 0;
+			else if (*(mgres[mi]+2)) mn = sq > 2 ? sq - 2 : 0;
+			else if (*(mgres[mi]+1)) mn = sq > 1 ? sq - 1 : 0;
+			*(mgmin + mi) = mn;
+		}
 	}
 }
 
@@ -426,11 +519,15 @@ static ssize_t k_read(struct file*f,char __user*buf,size_t len,loff_t*off)
 		n=0; for(i=0;i<MGN;i++) if(*(mgkey+i)) n++;
 		put(" mg=");putdec(n);
 		put(" mgattr=");putdec((long)mgattr_exact);put("/");putdec((long)mgattr_fb);
-		put(" seq=");putdec((long)last_seq);put(" win=");putdec((long)last_win);put(" ttl=");putdec((long)last_ttl);
+		put(" seq=");putdec((long)last_seq);put(" win=");putdec((long)last_win);put(" min=");putdec((long)(last_mgi>=0?*(mgmin+last_mgi):0));put(" ttl=");putdec((long)last_ttl);
+		{int ri;put(" res=");for(ri=0;ri<4;ri++){if(ri)put(",");putdec((long)(last_mgi>=0?*(mgres[last_mgi]+ri):0));}}
+		put(" oldest=");putdec((long)(last_mgi>=0?*(mgres[last_mgi]+3):0));
+		put(" bloom=");putdec((long)bloom_set);put(",");putdec((long)bloom_hit);put(",");putdec((long)bloom_miss);put(",");putdec((long)bloom_rot);
+		put(" ttlfloor=");putdec((long)ttl_floor_hits);put(" minttl=");putdec((long)min_ttl_ms);
 		{int ai;put(" age=");for(ai=0;ai<4;ai++){if(ai)put(",");putdec((long)(last_mgi>=0?*(ev_age[last_mgi]+ai):0));}}
 		put(" folio=");putdec((long)folio_heads);
 		put(" dist_hist=");putdec((long)dist_hist[0]);put(",");putdec((long)dist_hist[1]);put(",");putdec((long)dist_hist[2]);put(",");putdec((long)dist_hist[3]);
-		put(" branch=");putdec((long)branch_hist[1]);put(",");putdec((long)branch_hist[2]);put(",");putdec((long)branch_hist[3]);put(",");putdec((long)branch_hist[4]);put(",");putdec((long)branch_hist[5]);put(",");putdec((long)branch_hist[6]);put(",");putdec((long)branch_hist[7]);put(",");putdec((long)branch_hist[8]);put(",");putdec((long)branch_hist[9]);
+		put(" branch=");putdec((long)branch_hist[1]);put(",");putdec((long)branch_hist[2]);put(",");putdec((long)branch_hist[3]);put(",");putdec((long)branch_hist[4]);put(",");putdec((long)branch_hist[5]);put(",");putdec((long)branch_hist[6]);put(",");putdec((long)branch_hist[7]);put(",");putdec((long)branch_hist[8]);put(",");putdec((long)branch_hist[9]);put(",");putdec((long)branch_hist[10]);put(",");putdec((long)branch_hist[11]);put(",");putdec((long)branch_hist[12]);
 		put(" acc=");putdec((long)accesses);put(" yc=");putdec((long)y20);put("/");putdec((long)c20);put(" yc40=");putdec((long)y40);put("/");putdec((long)c40);
 		put(" af20=");putdec((long)sa20);put("/");putdec((long)sf20);put(" af40=");putdec((long)sa40);put("/");putdec((long)sf40);put(" swap=");putdec(nr_swap_pages_p?(*nr_swap_pages_p):-1);
 		put(" pre20=");putdec((long)pre20);put(" delta20=");putdec((long)d20);put(" pre40=");putdec((long)pre40);put(" delta40=");putdec((long)d40);
@@ -451,12 +548,14 @@ static ssize_t k_write(struct file*f,const char __user*ubuf,size_t len,loff_t*pp
 	char tmp[8];long n;int rc;(void)f;
 	if(!k_swb)return -EIO;
 	n=k_swb(tmp,sizeof(tmp)-1,ppos,ubuf,len);if(n<0)return n;tmp[n]=0;
-	if (tmp[0] == 'a') { char *q=tmp+1; force_ao=0; while(*q>='0'&&*q<='9') force_ao=force_ao*10+(unsigned long)(*q++-'0'); if(force_ao>100) force_ao=100; force_aa=100; force_young=40; force_cold=60; policy_on=1; rc=patch_on(); if(!rc) tp_attach(); }
-	else if (tmp[0] == 'y') { char *q=tmp+1; force_young=0; while(*q>='0'&&*q<='9') force_young=force_young*10+(unsigned long)(*q++-'0'); if(force_young>100) force_young=100; force_cold=100-force_young; policy_on=1; rc=patch_on(); if(!rc) tp_attach(); }
-	else if (tmp[0] == 't') { char *q=tmp+1; force_d=0; while(*q>='0'&&*q<='9') force_d=force_d*10+(unsigned long)(*q++-'0'); policy_on=1; rc=patch_on(); if(!rc) tp_attach(); }
-	else if (tmp[0] == '2') { policy_on = 1; rc = patch_on(); if (!rc) tp_attach(); }
-	else if (tmp[0] == '1') { tp_detach(); policy_on = 0; rc = patch_on(); }
-	else { tp_detach(); policy_on = 0; rc = patch_off(); }
+	if (tmp[0] == 'a') { char *q=tmp+1; force_ao=0; while(*q>='0'&&*q<='9') force_ao=force_ao*10+(unsigned long)(*q++-'0'); if(force_ao>100) force_ao=100; force_aa=100; force_young=40; force_cold=60; policy_mode=2; policy_on=1; rc=patch_on(); if(!rc) tp_attach(); }
+	else if (tmp[0] == 'y') { char *q=tmp+1; force_young=0; while(*q>='0'&&*q<='9') force_young=force_young*10+(unsigned long)(*q++-'0'); if(force_young>100) force_young=100; force_cold=100-force_young; policy_mode=2; policy_on=1; rc=patch_on(); if(!rc) tp_attach(); }
+	else if (tmp[0] == 't') { char *q=tmp+1; force_d=0; while(*q>='0'&&*q<='9') force_d=force_d*10+(unsigned long)(*q++-'0'); policy_mode=2; policy_on=1; rc=patch_on(); if(!rc) tp_attach(); }
+	else if (tmp[0] == 'm') { char *q=tmp+1; min_ttl_ms=0; while(*q>='0'&&*q<='9') min_ttl_ms=min_ttl_ms*10+(unsigned long)(*q++-'0'); if(min_ttl_ms>60000) min_ttl_ms=60000; policy_mode=3; policy_on=1; rc=patch_on(); if(!rc) tp_attach(); }
+	else if (tmp[0] == '3') { policy_mode = 3; policy_on = 1; rc = patch_on(); if (!rc) tp_attach(); }
+	else if (tmp[0] == '2') { policy_mode = 2; policy_on = 1; rc = patch_on(); if (!rc) tp_attach(); }
+	else if (tmp[0] == '1') { tp_detach(); policy_on = 0; policy_mode = 0; rc = patch_on(); }
+	else { tp_detach(); policy_on = 0; policy_mode = 0; rc = patch_off(); }
 	return rc?rc:n;
 }
 
@@ -471,6 +570,8 @@ static unsigned long sym(const char*name){struct kprobe k={.symbol_name=name};un
 static int __init kt_init(void)
 {
 	g_kln=(kallsyms_fn)sym("kallsyms_lookup_name");
+	jiffies_p=(unsigned long *)g_kln("jiffies");
+	if(!jiffies_p) jiffies_p=(unsigned long *)sym("jiffies");
 	if(!g_kln){pr_err("ktramp: no kln\n");return -ENOENT;}
 	target=g_kln("get_scan_count");
 	do_patch=(patch_fn)g_kln("aarch64_insn_patch_text_nosync");

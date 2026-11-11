@@ -24,6 +24,20 @@ path 5.10 и проверяет generation-aware политики через д�
   vendor-tracepoint (`seq`, `window=min(seq,2)`), порог refault по окну
   (`32*window`), young/cold по эпохе. Детали:
   [`MGLRU-STAGE-F.ru.md`](MGLRU-STAGE-F.ru.md).
+- **Stage K (`ktramp` 1.4.0):** per-memcg резидентная гистограмма поколений
+  (`mgres`), `min_seq` из пустых старых bucket'ов, `window = max_seq - min_seq`
+  в пороге refault.
+  Каждая scan-эпоха сдвигает гистограмму (`i -> i+1`, bucket 3 насыщается),
+  поэтому индекс bucket — это возраст в поколениях; без сдвига `min_seq`
+  вырождается в `seq`.
+  Гейт: `tests/qemu_ktramp_stagek_gate.sh` проверяет структурный инвариант
+  `min_seq in [seq-3, seq]`, непустую гистограмму, `window >= seq - min_seq`
+  и (cold) `min_seq < seq` на двух загрузках (cold, refault); прежний баг
+  «min не растёт» давал `min=0` при `seq=65` и этот гейт не проходит.
+- **Stage L/M (`ktramp` 1.5.0):** bloom-фильтр горячих страниц на поколение,
+  ярусное сканирование поколений (решает самое старое непустое поколение) и
+  порог `min_ttl` (`m<ms>`), ветки 10/11/12 и `bloom=set,hit,miss,rot`,
+  `ttlfloor=`. Гейт: `tests/qemu_ktramp_stageL_gate.sh`.
 - **Stage G (M5, `ktramp` 1.3.0):** адаптивный ttl 2..4 из отношения
   refault/eviction, 4-bucket гистограмма возраста вытеснений, ветки 8/9
   (старые вытеснения → полный скан, молодые → защита). Детали:

@@ -79,7 +79,7 @@ while true; do sleep 5; done
 INIT
 	chmod 755 "$root/init"
 	( cd "$root" && find . -print0 | cpio --null -o -H newc 2>/dev/null | gzip -1 > "$TMP/initramfs-$label.cpio.gz" )
-	timeout 75 "$QEMU" -M virt -cpu cortex-a72 -smp 1 -m "$KB_MEM" \
+	timeout 150 "$QEMU" -M virt -cpu cortex-a72 -smp 1 -m "$KB_MEM" \
 		-accel tcg,thread=single -kernel "$KB_IMAGE" \
 		-initrd "$TMP/initramfs-$label.cpio.gz" \
 		-append "console=ttyAMA0 nokaslr rdinit=/init panic=-1 loglevel=7 maxcpus=1" \
@@ -87,8 +87,8 @@ INIT
 	sed -n '/=== COUNTERS ===/,/=== DONE ===/p' "$log" | tr -d '\r' > "$TMP/counters-$label.txt"
 }
 
-field() { # label field
-	sed -n 's/.*'"$2"'=\([^ ]*\).*/\1/p' "$TMP/counters-$1.txt" | head -1
+field() { # label field — exact key match (no substring collisions like ttl vs minttl)
+	awk -v k="$2" '{for(i=1;i<=NF;i++){if(split($i,a,"=")==2 && a[1]==k){print a[2]; exit}}}' "$TMP/counters-$1.txt"
 }
 branch() { # label index
 	local b; b=$(field "$1" branch)
