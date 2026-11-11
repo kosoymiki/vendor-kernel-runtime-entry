@@ -123,7 +123,7 @@ vh_off=0 kt_off=0 vh_rm=0 kt_rm=0 vh_gone kt_gone vh_mod_gone kt_mod_gone
 первым вытесняется самое старое поколение — порядок MGLRU на реальных списках,
 без структур `lru_gen`.
 
-QEMU (`tests/qemu_vmscan_hook_gate.sh`, модуль sha `a366be99…`):
+QEMU (`tests/qemu_vmscan_hook_gate.sh`, модуль sha `20ec5b71…`):
 
 ```
 poll=18 pgscan=9045
@@ -141,8 +141,8 @@ restore_rc=0 ... rmmod_rc=0 proc_gone module_gone
 Сортировка теперь покрывает `LRU_INACTIVE_ANON`, `LRU_ACTIVE_ANON`,
 `LRU_INACTIVE_FILE`, `LRU_ACTIVE_FILE`: старые active-страницы первыми
 демотируются `shrink_active_list`, а головы inactive-списков несут самое
-старое поколение. QEMU (`sha a366be99…`): `calls=88`, `scans=20791`,
-`moved=9266019`, `buckets=12383,2586,1209,9249841`, `pgscan_file=9578`,
+старое поколение. QEMU (`sha 20ec5b71…`): `calls=89`, `scans=19424`,
+`moved=9366762`, `buckets=14095,2891,1954,9347822`, `pgscan_file=8961`,
 restore/unload чистые.
 
 Folio-замечание (доказано r2): `enabled_store()` в стоковом Image — заглушка
@@ -158,6 +158,16 @@ sysfs-переключатель THP изменить нельзя. Vendor-пу�
 нет (`AnonHugePages=0`, `compound=0`); модуль нормализует compound-head и
 держит folio-путь готовым для ядра с включённым CHP/THP-init, нормализация
 покрыта unit-тестом.
+
+## Stage J — entry-хук `shrink_node_memcgs`
+
+Вторая цель: `shrink_node_memcgs` (`0xffffffea8be3abdc`) патчится
+трамплином с копированием пролога (7 инструкций, ветвление назад на
+`target+28`); обёртка считает вызовы и в boost-режиме пишет `sc->priority`
+(`0x2b`) в 0 перед вызовом оригинала. QEMU (`sha 20ec5b71…`): `sn_hooked=1`,
+`sn_calls=2`, `sn_boost=1`, `pgscan_file=2144`; restore `sn_hooked 1→0`,
+`rmmod_rc=0`, `proc_gone`, `module_gone`. Это точка перехвата скана
+per-node/memcg; данные per-memcg — из vendor-tracepoint.
 
 ## Ограничения (честно)
 

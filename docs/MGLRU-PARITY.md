@@ -26,6 +26,7 @@ as structure** — the data structure is not replaced (side table instead).
 | per-generation LRU lists | `lru_gen` lists | module sorts the kernel's inactive lists into 4 age buckets, oldest-first, under `lru_lock`; no `lru_gen` structures | approximate (real list order) |
 | folio paths | multi-order folios | head-page normalization in the module tables; QEMU produces no compound LRU pages (r2-proven vendor THP/CHP init gate) | partial (unit-tested) |
 | text patch / SMP safety | n/a | `aarch64_insn_patch_text` (stop_machine), restore | **exact** |
+| per-memcg scan entry (`shrink_node_memcgs`) | direct call | module trampoline at entry; priority boost; per-node/memcg interception | **exact entry point** |
 | custom `shrink_lruvec` (vmscan entry) | source rebuild | `vmscan_hook`: module function replaces `shrink_lruvec`, calls kernel `shrink_active_list`/`shrink_inactive_list` | **exact entry point**, approximate loop |
 | observability | tracepoints | kprobes + vendor tracepoint; counters in `/proc` | **exact** |
 

@@ -49,6 +49,16 @@ static u32 orig0;
 static int hooked;
 static unsigned long calls, scans, reclaimed_pages, moved, ttl_ms = 50;
 static unsigned long sb[4], compound;
+
+/* shrink_node_memcgs entry hook: per-memcg scan function */
+static unsigned long sn_target, sn_calls, sn_boost;
+static u32 sn_orig0;
+static void *sn_tramp;
+static int sn_patched;
+static void *(*g_module_alloc)(unsigned long);
+static int (*g_set_memory_x)(unsigned long, int);
+static void (*g_flush_icache)(unsigned long, unsigned long);
+static void (*sn_orig_fn)(void *, void *);
 static patch_fn do_patch;
 static struct proc_dir_entry *vpde;
 static char vbuf[512];
@@ -194,6 +204,77 @@ static noinline void my_shrink_lruvec(void *lruvec, void *sc)
 	reclaimed_pages = *(unsigned long *)((char *)sc + SC_NR_RECLAIMED) - r0;
 }
 
+static u32 br(u32 insn_addr, unsigned long dest, unsigned long src)
+{
+	long off = (long)(dest - src);
+	(void)insn_addr;
+	if (off >= (128L << 20) || off < -(128L << 20))
+		return 0;
+	return 0x14000000u | ((u32)(off >> 2) & 0x03ffffffu);
+}
+
+static noinline void my_sn_memcgs(void *pgdat, void *sc)
+{
+	sn_calls++;
+	if (sn_boost)
+		*(s8 *)((char *)sc + 0x2b) = 0;	/* sc->priority */
+	sn_orig_fn(pgdat, sc);
+}
+
+static int sn_patch_on(void)
+{
+	u32 *tp;
+	int i;
+	u32 b;
+	void *a[1];
+	u32 ins[1];
+
+	if (sn_patched)
+		return 0;
+	if (!sn_target || !do_patch)
+		return -EINVAL;
+	sn_orig0 = *(volatile u32 *)sn_target;
+	if (!sn_tramp) {
+		if (!g_module_alloc || !g_set_memory_x || !g_flush_icache)
+			return -ENOENT;
+		sn_tramp = g_module_alloc(PAGE_SIZE);
+		if (!sn_tramp)
+			return -ENOMEM;
+		tp = (u32 *)sn_tramp;
+		for (i = 0; i < 7; i++)
+			tp[i] = *(volatile u32 *)(sn_target + i * 4);
+		tp[7] = br(0, (unsigned long)(sn_target + 28), (unsigned long)(sn_tramp)+28);
+		if (!tp[7])
+			return -ERANGE;
+		g_flush_icache((unsigned long)sn_tramp, (unsigned long)sn_tramp + 32);
+		g_set_memory_x((unsigned long)sn_tramp, 1);
+		g_flush_icache((unsigned long)sn_tramp, (unsigned long)sn_tramp + 32);
+	}
+	sn_orig_fn = (void (*)(void *, void *))sn_tramp;
+	b = br(0, (unsigned long)my_sn_memcgs, sn_target);
+	if (!b)
+		return -ERANGE;
+	a[0] = (void *)sn_target; ins[0] = b;
+	if (do_patch(a, ins, 1))
+		return -EIO;
+	sn_patched = 1;
+	return 0;
+}
+
+static int sn_patch_off(void)
+{
+	void *a[1];
+	u32 ins[1];
+
+	if (!sn_patched)
+		return 0;
+	a[0] = (void *)sn_target; ins[0] = sn_orig0;
+	if (do_patch(a, ins, 1))
+		return -EIO;
+	sn_patched = 0;
+	return 0;
+}
+
 static int patch_on(void)
 {
 	u32 insn;
@@ -242,6 +323,7 @@ static ssize_t v_read(struct file *f, char __user *buf, size_t len, loff_t *off)
 	put_(" hooked="); putdec_(hooked);
 	put_(" calls="); putdec_((long)calls);
 	put_(" scans="); putdec_((long)scans);
+	put_(" sn_hooked="); putdec_(sn_patched); put_(" sn_calls="); putdec_((long)sn_calls); put_(" sn_boost="); putdec_(sn_boost);
 	put_(" reclaimed="); putdec_((long)reclaimed_pages); put_(" moved="); putdec_((long)moved); put_(" compound="); putdec_((long)compound); put_(" buckets="); putdec_((long)sb[0]); put_(","); putdec_((long)sb[1]); put_(","); putdec_((long)sb[2]); put_(","); putdec_((long)sb[3]); put_(" ttl_ms="); putdec_((long)ttl_ms);
 	put_("\n");
 	return simple_read_from_buffer(buf, len, off, vbuf, (size_t)(vp - vbuf));
@@ -258,7 +340,10 @@ static ssize_t v_write(struct file *f, const char __user *ubuf, size_t len, loff
 	if (n < 0)
 		return n;
 	tmp[n] = 0;
-	if (tmp[0] == 't') {
+	if (tmp[0] == 'm') {
+		sn_boost = 1;
+		rc = sn_patch_on();
+	} else if (tmp[0] == 't') {
 		char *q = tmp + 1;
 		unsigned long v = 0;
 		while (*q >= '0' && *q <= '9') v = v * 10 + (*q++ - '0');
@@ -266,6 +351,7 @@ static ssize_t v_write(struct file *f, const char __user *ubuf, size_t len, loff
 	} else if (tmp[0] == '1') {
 		rc = patch_on();
 	} else {
+		sn_patch_off();
 		rc = patch_off();
 	}
 	return rc ? rc : n;
@@ -300,6 +386,10 @@ static int __init vh_init(void)
 	g_shrink_active = (shrink_active_fn)kln("shrink_active_list");
 	g_cond_resched = (cond_resched_fn)kln("cond_resched");
 	do_patch = (patch_fn)kln("aarch64_insn_patch_text");
+	sn_target = kln("shrink_node_memcgs");
+	g_module_alloc = (void *(*)(unsigned long))kln("module_alloc");
+	g_set_memory_x = (int (*)(unsigned long, int))kln("set_memory_x");
+	g_flush_icache = (void (*)(unsigned long, unsigned long))kln("__flush_icache_range");
 	jiffies_p = (unsigned long *)kln("jiffies");
 	if (!target || !g_get_scan || !g_shrink_inactive || !g_shrink_active || !do_patch) {
 		pr_err("vmscan_hook: missing symbols target=%px gs=%px si=%px sa=%px p=%px\n",
@@ -319,6 +409,7 @@ static int __init vh_init(void)
 
 static void __exit vh_exit(void)
 {
+	sn_patch_off();
 	patch_off();
 	if (ak_reg)
 		unregister_kprobe(&akp);

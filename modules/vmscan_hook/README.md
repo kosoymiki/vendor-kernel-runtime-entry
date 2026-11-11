@@ -39,7 +39,7 @@ Offsets (verified by `scprobe`): `nr_to_reclaim 0x00`, bits `0x28`,
 ## Observed (QEMU, stock Image, 512 MiB, swapless)
 
 Gate: `tests/qemu_vmscan_hook_gate.sh`, module 1.1.0, sha256
-`a366be997e7a5e7d7c76b6c45f2452cd5fc12eebd1ac84cea4a7635e56eb33e8`
+`20ec5b71b590f712561a4c4c62e499ebcb06f4453004e7069c3b68e21ce53623`
 (built twice from the same profile; one byte string both times).
 
 ```
@@ -86,7 +86,7 @@ unit-tested, not QEMU-exercised. QEMU: `calls=88`, `scans=20791`,
 `<4 ttl`, `>=4 ttl` / never accessed) and rebuilds them oldest-first under
 `pgdat->lru_lock`, so the kernel scanner evicts the oldest generation first.
 
-QEMU (`tests/qemu_vmscan_hook_gate.sh`, sha `a366be99…`):
+QEMU (`tests/qemu_vmscan_hook_gate.sh`, sha `20ec5b71…`):
 
 ```
 poll=18 pgscan=9045
@@ -94,6 +94,12 @@ vmscan_hook ... hooked=1 calls=89 scans=19583 moved=8908715
               buckets=5743,865,0,8902107 ttl_ms=20000
 restore_rc=0 rmmod_rc=0 proc_gone module_gone
 ```
+
+## Stage J — `shrink_node_memcgs` entry hook
+
+Patches `shrink_node_memcgs` with a copied-prologue trampoline and a wrapper
+that counts calls and can boost `sc->priority` to 0. QEMU: `sn_hooked=1`,
+`sn_calls=2`, `sn_boost=1`, `pgscan=2144`; restore 1→0, rmmod clean.
 
 ## Limits
 

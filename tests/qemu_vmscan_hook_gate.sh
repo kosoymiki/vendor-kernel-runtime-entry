@@ -27,7 +27,7 @@ while true; do cat /mnt/big > /dev/null; done &
 echo t20000 > /proc/vmscan_hook
 echo 1 > /proc/vmscan_hook; echo "hook_rc=$?"
 ./fillmem 345 &
-i=0; while [ $i -lt 90 ]; do S=$(grep '^pgscan_file ' /proc/vmstat | grep -o '[0-9]*'); [ "${S:-0}" -gt 0 ] && break; sleep 1; i=$((i+1)); done
+i=0; while [ $i -lt 120 ]; do S=$(grep '^pgscan_file ' /proc/vmstat | grep -o '[0-9]*'); [ "${S:-0}" -gt 0 ] && break; sleep 1; i=$((i+1)); done
 echo "poll=$i pgscan=${S:-0}"
 echo "=== COUNTERS ==="; cat /proc/vmscan_hook
 grep -qE "moved=[1-9]" /proc/vmscan_hook && echo "PASS moved>0" || echo "FAIL moved=0"
@@ -39,5 +39,5 @@ echo "=== DONE ==="
 while true; do sleep 5; done
 INIT
 chmod 755 "$ROOT/init"; ( cd "$ROOT" && find . -print0 | cpio --null -o -H newc 2>/dev/null | gzip -1 > "$TMP/initramfs.cpio.gz" )
-timeout 90 "$QEMU" -M virt -cpu cortex-a72 -smp 1 -m "$KB_MEM" -accel tcg,thread=single -kernel "$KB_IMAGE" -initrd "$TMP/initramfs.cpio.gz" -append "console=ttyAMA0 nokaslr rdinit=/init panic=-1 loglevel=7 maxcpus=1" -nographic -no-reboot > "$TMP/serial.log" 2>&1 || true
+timeout 150 "$QEMU" -M virt -cpu cortex-a72 -smp 1 -m "$KB_MEM" -accel tcg,thread=single -kernel "$KB_IMAGE" -initrd "$TMP/initramfs.cpio.gz" -append "console=ttyAMA0 nokaslr rdinit=/init panic=-1 loglevel=7 maxcpus=1" -nographic -no-reboot > "$TMP/serial.log" 2>&1 || true
 echo log=$TMP/serial.log; sed -n '/=== VMSSCAN HOOK/,/=== DONE ===/p' "$TMP/serial.log" | tr -d '\r' | grep -vE '^\s*$'

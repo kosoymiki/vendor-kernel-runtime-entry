@@ -1,8 +1,8 @@
 {
   "_comment": "Single source of truth for release and module metadata. tools/make_assets.py renders it into the SVGs; tools/check_versions.py enforces that nothing drifts. Bump here first, then run the checklist in docs/RELEASE.md.",
   "release": {
-    "version": "1.7.0",
-    "versionCode": 12,
+    "version": "1.8.0",
+    "versionCode": 13,
     "date": "2026-11-11"
   },
   "modules": [
@@ -44,11 +44,11 @@
     },
     {
       "name": "vmscan_hook",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "status": "experimental",
-      "sha256": "a366be997e7a5e7d7c76b6c45f2452cd5fc12eebd1ac84cea4a7635e56eb33e8",
+      "sha256": "20ec5b71b590f712561a4c4c62e499ebcb06f4453004e7069c3b68e21ce53623",
       "gate": "tests/qemu_vmscan_hook_gate.sh",
-      "note": "custom shrink_lruvec + generation-bucket sort over all four evictable lists (oldest-first), folio head normalization",
+      "note": "custom shrink_lruvec + four-list sort + shrink_node_memcgs entry hook (trampoline, priority boost)",
       "dir": "modules/vmscan_hook"
     }
   ],
@@ -114,19 +114,19 @@
       "log": "$PREFIX/tmp/mglru-gate.*/serial.log"
     },
     "vmscan_hook": {
-      "calls": 88,
-      "scans": 20791,
-      "moved": 9266019,
+      "calls": 89,
+      "scans": 19424,
+      "moved": 9366762,
       "buckets": [
-        12383,
-        2586,
-        1209,
-        9249841
+        14095,
+        2891,
+        1954,
+        9347822
       ],
       "compound": 0,
-      "compound_note": "THP runtime-disabled by vendor (enabled_store compiled out; flag write ineffective; AnonHugePages=0)",
+      "compound_note": "THP runtime-disabled by vendor (r2-proven)",
       "ttl_ms": 20000,
-      "pgscan_file": 9578,
+      "pgscan_file": 8961,
       "restore": {
         "hooked": "1->0",
         "rmmod_rc": 0,
@@ -150,6 +150,19 @@
       "pgscan_file": 8205,
       "gate": "tests/qemu_vmscan_stack_gate.sh",
       "log": "$PREFIX/tmp/vmscan-stack.*/serial.log"
+    },
+    "vmscan_memcg": {
+      "sn_calls": 2,
+      "sn_boost": 1,
+      "pgscan_file": 2144,
+      "restore": {
+        "sn_hooked": "1->0",
+        "rmmod_rc": 0,
+        "proc_gone": true,
+        "module_gone": true
+      },
+      "gate": "tests/qemu_vmscan_memcg_gate.sh",
+      "log": "$PREFIX/tmp/vmscan-memcg.*/serial.log"
     }
   }
 }

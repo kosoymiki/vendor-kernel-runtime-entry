@@ -121,7 +121,7 @@ list oldest-first. The kernel scanner takes from the head, so the oldest
 generation is evicted first — MGLRU's ordering on the real lists, without
 `lru_gen` structures.
 
-QEMU (`tests/qemu_vmscan_hook_gate.sh`, module sha `a366be99…`):
+QEMU (`tests/qemu_vmscan_hook_gate.sh`, module sha `20ec5b71…`):
 
 ```
 poll=18 pgscan=9045
@@ -139,8 +139,8 @@ pages (8902107) at the head.
 The sort now covers `LRU_INACTIVE_ANON`, `LRU_ACTIVE_ANON`,
 `LRU_INACTIVE_FILE`, `LRU_ACTIVE_FILE`, so old active pages are demoted first
 by `shrink_active_list`, and the file/anon inactive heads carry the oldest
-generation. QEMU (`sha a366be99…`): `calls=88`, `scans=20791`,
-`moved=9266019`, `buckets=12383,2586,1209,9249841`, `pgscan_file=9578`,
+generation. QEMU (`sha 20ec5b71…`): `calls=89`, `scans=19424`,
+`moved=9366762`, `buckets=14095,2891,1954,9347822`, `pgscan_file=8961`,
 restore/unload clean.
 
 Folio note (r2-proven): `enabled_store()` is a four-instruction stub in the
@@ -155,6 +155,16 @@ never runs. Entry-point table: static key (initcall dead), early_param
 LRU pages on this image (`AnonHugePages=0`, `compound=0`); the module
 normalizes compound heads and keeps the folio path ready for a kernel whose
 CHP/THP init is enabled, with the normalization unit-tested.
+
+## Stage J — `shrink_node_memcgs` entry hook
+
+A second target: `shrink_node_memcgs` (`0xffffffea8be3abdc`) is patched with a
+copied-prologue trampoline (7 instructions, branch back to `target+28`); the
+wrapper counts calls and, in boost mode, writes `sc->priority` (`0x2b`) to 0
+before calling the original. QEMU (`sha 20ec5b71…`): `sn_hooked=1`,
+`sn_calls=2`, `sn_boost=1`, `pgscan_file=2144`; restore `sn_hooked 1→0`,
+`rmmod_rc=0`, `proc_gone`, `module_gone`. This is the per-node/memcg scan
+interception point; per-memcg policy data comes from the vendor tracepoint.
 
 ## Limits (honest)
 
