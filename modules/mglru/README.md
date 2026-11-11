@@ -26,24 +26,31 @@ pressure, poll `pgscan_file`; see `docs/MEASURING-RECLAIM.md`).
 
 | metric | mode 0 | mode 5 |
 |---|---|---|
-| `get_scan_count` hits | 101 | 102 |
-| `page_referenced` hits | 5266 | 4436 |
-| `pgscan_file` | 5934 | 4880 |
-| policy writes | — | `changed=77` / `phits=102` |
+| `get_scan_count` hits | 54 | 84 |
+| `page_referenced` hits | 1428 | 3977 |
+| `pgscan_file` | 1428 | 4478 |
+| policy writes | — | `changed=55` / `phits=84` (`gt0=55`, `zero=84`) |
 
-**Proven:** the hook fires and rewrites `scan_control.priority` in 77 of 102
+**Proven:** the hook fires and rewrites `scan_control.priority` in 55 of 84
 `shrink_node` calls.
 
-**Not proven:** that the policy changes total scan volume — `pgscan_file` is a
-running total and the workload is OOM-terminated at a different point each run
-(an independent pair gave 4178 vs 6834, the opposite direction). A
-fixed-endpoint measurement is the next step; see `docs/MGLRU.md`.
+**Not a metric:** cumulative `pgscan_file` is a running total and the workload
+is OOM-terminated at a different point each run (an independent pair gave 4178
+vs 6834, the opposite direction). The fixed-endpoint `delta/pre` metric lives in
+`ktramp` 1.1.0 (Stage E); see `docs/MGLRU-STAGE-E.md`.
 
-## Known defect that shaped this revision
+## Known defects that shaped this revision
 
-Registering a kprobe **and** a kretprobe on `get_scan_count` silently suppressed
-the return handler (`modified=0`, `nmissed=0`). The kretprobe was removed; the
-policy now acts at `shrink_node` entry.
+- Registering a kprobe **and** a kretprobe on `get_scan_count` silently
+  suppressed the return handler (`modified=0`, `nmissed=0`). The kretprobe was
+  removed; the policy now acts at `shrink_node` entry.
+- `mark_page_accessed` (`mkp`) was registered but not unregistered in `exit`,
+  so `rmmod` left a breakpoint into freed module text and the next access
+  Oopsed (`kprobe_breakpoint_handler`, "last unloaded: mglru_probe"). Fixed with
+  an `mk_reg` flag; the load/read/rmmod gate is green.
+
+Artifact: `mglru_probe.ko`, sha256
+`9a142d8b04c03a343839d38a935ad84c06f8e6e76f629d4d39fbf8a11dd53d35`.
 
 ## Safety
 

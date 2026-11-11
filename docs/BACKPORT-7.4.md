@@ -66,9 +66,9 @@ when the vendor path is absent.)
 
 | id | feature | 7.4 source | 5.10 target | mechanism | tier | status |
 |---|---|---|---|---|---|---|
-| F-001 | MGLRU | `mm/vmscan.c` (`lru_gen*`, 216 refs), `mm/workingset.c`, `Documentation/admin-guide/mm/multigen_lru.rst` | `mm/vmscan.c`, `mm/workingset.c`, lruvec/page fields | A: kprobe observability; B: policy hooks; C: trampolines; side table for generation state | T1 | planned |
+| F-001 | MGLRU | `mm/vmscan.c` (`lru_gen*`, 216 refs), `mm/workingset.c`, `Documentation/admin-guide/mm/multigen_lru.rst` | `mm/vmscan.c`, `mm/workingset.c`, lruvec/page fields | A: kprobe observability; B: policy hooks; C: trampolines; side table for generation state | T1 | **Stage E verified (`ktramp` 1.1.0)** |
 | F-002 | VMA rework | `mm/vma.c` (3,715 L), `mm/mmap.c` | `mm/mmap.c`, `mm/memory.c` | source/trampolines; high risk | T1 | inventory |
-| F-003 | DAMON | `mm/damon/core.c` (4,311 L) | absent | source/module; sysfs hooks | T1 | inventory |
+| F-003 | DAMON | `mm/damon/core.c` (4,311 L) | `CONFIG_DAMON=y`, `DAMON_PADDR=y`, `DAMON_RECLAIM=y`; no `DAMON_SYSFS` | native, not administrable; no backport needed | T1 | **native (observed)** |
 | F-004 | alloc_tag | `mm/alloc_tag.c` (1,367 L) | `mm/` | source/module; page_ext | T1 | inventory |
 | F-005 | memcontrol-v1 | `mm/memcontrol-v1.c` (2,218 L) | `mm/memcontrol.c` | source port; cgroup ABI | T2 | inventory |
 | F-006 | sched_ext | `kernel/sched/ext/ext.c` 12,499 L + `sub.c` 3,229 L | absent | module/hooks; BPF scheduler | T2 | inventory |
@@ -108,3 +108,32 @@ The entry does not require the disabled configs (`KEXEC`, `DEVMEM`,
 `MULTIKERNEL`, `LIVEPATCH`, `FUNCTION_TRACER`). It uses loadable modules,
 kprobe symbol resolution, and runtime code/hook payloads. That is the
 “unique entry point”; the backport layer builds on it.
+
+## F-001 MGLRU — Stage E result (2026-11-11)
+
+`ktramp` 1.1.0 (sha `85d01060…`) implements the runtime decision model at the
+`get_scan_count` boundary:
+
+- per-memcg generation tables (vendor `android_vh_shrink_node_memcgs`
+  tracepoint for exact attribution);
+- shadow-based refault distance: `lruvec->nonresident_age` (offset 96) minus
+  `shadow >> 19`;
+- young/cold tiering from `mark_page_accessed` page generations;
+- SMP-safe text patch with restore; unload clean.
+
+QEMU evidence (`tests/qemu_ktramp_gate.sh`, stock Image, 512 MiB, swapless):
+
+| regime | counters | branch | suppression |
+|---|---|---|---|
+| cold ext4 cache | `yc=0/398`, `nr_calls=108` | 7 (full scan) | `delta20=2 / pre20=610` |
+| forced young `y80` | `fyc=80/20` | 6 | `delta20=376 / pre20=736` = 51.1% |
+| forced distance `t5` | `fd=5` | 1 | `delta20=8703 / pre20=8703` = 100% |
+| real refault | `MADV_PAGEOUT` 128 KiB | 2 | `tdist=847` |
+| restore + unload | — | — | `patched 1→0`, `rmmod_rc=0`, `proc_gone`, `module_gone` |
+
+What remains for M4: the exact `min_seq/max_seq` reclaim clock, per-generation
+LRU lists, and folio paths. These are delivered as side tables plus
+`kpatch`/`ktramp`/kprobe hooks on the reclaim path — not as a vmscan rebuild.
+The compatibility layer (CFI, MODVERSIONS, vermagic, init/exit relocations,
+SMP-safe patching) is the point of `kbootstrap` + `kpatch` + `ktramp`. The gap
+list below is about fidelity, not about a missing entry point.

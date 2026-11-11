@@ -1,4 +1,4 @@
-# MGLRU probe: Stage A/B status (experimental)
+# MGLRU probe: Stage A/B/E status (experimental)
 
 `modules/mglru` is a **probe**, not a full 7.4 MGLRU backport. It exists to
 measure the 5.10 reclaim path and to test generation-aware policies through the
@@ -15,6 +15,12 @@ proven entry.
     side table;
   - `5` priority policy — `shrink_node` entry sets `scan_control.priority` to 0
     (aggressive reclaim).
+- **Stage E (generation-tier policy, `ktramp` 1.1.0):** `mark_page_accessed`
+  stores page generations, eviction classifies young/cold, and the
+  `get_scan_count` trampoline protects a young working set or keeps the full
+  scan when cold pages dominate. Shadow-based refault distance and per-memcg
+  attribution are part of the same module. Details:
+  [`MGLRU-STAGE-E.md`](MGLRU-STAGE-E.md).
 - `mark_page_accessed` kprobe feeds a 1024-entry page-generation side table.
 
 Mode 5 reads `scan_control` from `regs[1]` and writes the `s8 priority` field at
@@ -38,16 +44,16 @@ Workload: ext4 file through `loop0` + 345 MiB anonymous pressure, polling
 
 | metric | mode 0 (baseline) | mode 5 (priority policy) |
 |---|---|---|
-| `shrink_node` hits | 101 | 102 |
-| `get_scan_count` hits | 101 | 102 |
-| `page_referenced` hits | 5266 | 4436 |
-| `pgscan_file` | 5934 | 4880 |
-| `pgscan_kswapd` | 5768 | 4655 |
-| `pgscan_direct` | 166 | 225 |
-| policy writes | — | `changed=77` / `phits=102` |
+| `get_scan_count` hits | 54 | 84 |
+| `page_referenced` hits | 1428 | 3977 |
+| `pgscan_file` | 1428 | 4478 |
+| `pgscan_kswapd` | 930 | 4198 |
+| `pgscan_direct` | 498 | 280 |
+| policy writes | — | `changed=55` / `phits=84` (`gt0=55`, `zero=84`) |
 
-**What is proven:** the hook fires and rewrites `scan_control.priority` in 77 of
-102 `shrink_node` calls. That is a deterministic, in-kernel fact.
+**What is proven:** the hook fires and rewrites `scan_control.priority` in 55 of
+84 `shrink_node` calls (`gt0=55`, `zero=84`). That is a deterministic,
+in-kernel fact.
 
 **What is *not* proven:** that the policy changes the *amount* of scanning.
 `pgscan_file` is a running total and the workload is terminated by the OOM
@@ -65,14 +71,13 @@ not comparable across runs; only a fixed-endpoint measurement can settle it.
 
 ## Next stages
 
-- **Fixed-endpoint measurement:** sum `nr[]` per `get_scan_count` call (the
-  `ktramp` trampoline already sees it) and compare medians over repeated runs,
-  without letting the workload reach OOM.
-- **Stage C:** replace selected `vmscan` functions with 7.4-inspired
-  implementations via trampoline. On SMP use `aarch64_insn_patch_text` +
-  `stop_machine`, not `_nosync`.
-- **Stage D:** parity subset + benchmarks (pgscan, refault, latency, working
-  set) with an explicit gap list.
+- **Stage C/D/E landed in `ktramp` 1.1.0:** full-function trampoline with
+  SMP-safe patching, per-memcg generation tables, shadow refault distance,
+  young/cold tiering, fixed per-call `delta/pre` metrics, restore and unload.
+  See [`MGLRU-STAGE-E.md`](MGLRU-STAGE-E.md).
+- **M4 (next):** parity subset and gap report against 7.4 MGLRU
+  (`min_seq/max_seq` clock, per-generation LRU lists, folio paths) with the
+  explicit list of what a runtime module cannot replace.
 
 ## Measuring reclaim correctly
 

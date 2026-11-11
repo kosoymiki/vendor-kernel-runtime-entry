@@ -139,8 +139,8 @@ Full detail, including what text patching does *not* prove: [`docs/ENTRYPOINTS.m
 |---|---|---|---|---|
 | [`kbootstrap`](kernel/) | 1.0.0 | stable probe | CFI bridge, kallsyms resolution, raw payload, `/proc` control | `payload_result=42` · `065f520b…` |
 | [`kpatch`](modules/kpatch/) | 1.0.2 | probe | save → `aarch64_insn_patch_text_nosync` → verify → restore of a syscall | `getpid 114 → 0 → 118` · `c4f9a319…` |
-| [`ktramp`](modules/ktramp/) | 1.0.3 | probe | copied-prologue trampoline replaces a whole function, then restores | `calls=113`, `pgscan_file=6084` · `bbfb599a…` |
-| [`mglru_probe`](modules/mglru/) | 1.0.4 | experimental | reclaim-path kprobes + `shrink_node` priority policy | `changed=77/102`, `pgscan_file=5934` · `a0f4f59c…` |
+| [`ktramp`](modules/ktramp/) | 1.1.0 | experimental | Stage E generation-tier policy at `get_scan_count`: young/cold, shadow refault distance, restore + unload | branch 7 cold, `y80` 51.1%, `t5` 100%, `tdist=847` · `85d01060…` |
+| [`mglru_probe`](modules/mglru/) | 1.0.5 | experimental | reclaim-path kprobes + `shrink_node` priority policy, clean rmmod | `changed=55/84`, `gt0=55` · `9a142d8b…` |
 
 The library is the point of the project: each module is built from this tree by
 one builder, gated in QEMU, and shipped with its evidence. New backports
@@ -208,8 +208,8 @@ modes.
 |---|---|---|
 | `kbootstrap.ko` | `065f520b1b562f55eef48a138a12d4df3c18d51357bcbacb39b46d1e9a33c593` | `tests/qemu_payload_gate.sh` |
 | `kpatch.ko` | `c4f9a319feb6da9d8989bbdb15903bcb6ccce4c361c1fcd1edfc237dfe5ddf11` | `tests/qemu_probe_gate.sh` |
-| `ktramp.ko` | `bbfb599a17db566dae1eb664dbafba5de1f5568bd08ac7363ca1ceefc35b55e3` | `tests/qemu_ktramp_gate.sh` |
-| `mglru_probe.ko` | `a0f4f59c3a965d0c4b6b4551ae386b82255fc4f8f7536837cd6668db563b04ad` | `tests/qemu_mglru_gate.sh` |
+| `ktramp.ko` | `85d01060cc47d96146608ccbadedfbe3eb9d3bcae3eb9369cd5c32543468c9fd` | `tests/qemu_ktramp_gate.sh` |
+| `mglru_probe.ko` | `9a142d8b04c03a343839d38a935ad84c06f8e6e76f629d4d39fbf8a11dd53d35` | `tests/qemu_mglru_gate.sh` |
 
 Measured on QEMU with the exact stock `Image` (`-smp 1`, `maxcpus=1`):
 
@@ -218,14 +218,16 @@ Measured on QEMU with the exact stock `Image` (`-smp 1`, `maxcpus=1`):
   `init_module+0x1c/0xfe8 [kbootstrap]` in the trace — `init_module` really ran.
 - **text patch:** `__arm64_sys_getpid` saved, patched to `mov w0,#0; ret`,
   returned `0`, restored, returned `118`.
-- **trampoline:** `get_scan_count` entry replaced with a branch into the module
-  wrapper, 7 prologue instructions copied back; `calls=113`,
-  `pgscan_file=6084`, `pgscan_kswapd=5917`, `pgscan_direct=167`, then
-  `patched=0` after restore.
-- **reclaim probes:** baseline `get_scan_count` 101 hits at `pgscan_file=5934`;
-  mode 5 rewrote `scan_control.priority` in 77 of 102 `shrink_node` calls.
-  Total scan volume is *not* comparable across runs — see the caveat in
-  [`docs/MGLRU.md`](docs/MGLRU.md).
+- **trampoline (Stage E):** `get_scan_count` entry replaced with a branch into
+  the module wrapper; cold cache takes branch 7 (full scan, `nr_calls=108`),
+  forced young `y80` takes branch 6 (`delta20=376/736` = 51.1%), forced
+  distance `t5` takes branch 1 (100%), real refault takes branch 2
+  (`tdist=847`); `patched=0`, `rmmod_rc=0`, `proc_gone`, `module_gone`.
+- **reclaim probes:** baseline `get_scan_count=54`, `pgscan_file=1428`; mode 5
+  `get_scan_count=84`, `pgscan_file=4478`, `changed=55/phits=84`
+  (`gt0=55`, `zero=84`). Cumulative totals are not comparable across runs — the
+  fixed-endpoint `delta/pre` metric is in `ktramp` 1.1.0; see
+  [`docs/MGLRU-STAGE-E.md`](docs/MGLRU-STAGE-E.md).
 - **payload:** `/proc/kbootstrap` reports `payload_result=42`.
 
 How the reclaim workload is generated (and why `tmpfs` does not work) is
@@ -242,8 +244,8 @@ documented in [`docs/MEASURING-RECLAIM.md`](docs/MEASURING-RECLAIM.md).
 | M0 entry | **done** | LKM + CFI bridge + raw payload |
 | M1 text patch | **done** | save / patch / verify / restore |
 | M2 trampoline | **done** | whole-function replacement |
-| M3 policy hooks | **in progress** | reclaim policy modes, generation side table, SMP-safe patching |
-| M4 7.4 backport | next | vmscan functions, workingset refault distance, folio paths |
+| M3 policy hooks | **done** | Stage E generation-tier policy, shadow refault distance, SMP-safe patching, restore/unload |
+| M4 7.4 backport | next | parity subset and gap report: `min_seq/max_seq` clock, per-generation LRU lists, folio paths |
 | M5 parity | planned | benchmarks, gap report, parity subset |
 
 A probe is not a backport. M3/M4 land only with QEMU behaviour evidence and an
@@ -259,6 +261,7 @@ explicit gap list; the 5.10 → 7.4 delta is measured in
 | [v1.0.2](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.2) | `kpatch` text-patch probe, `mglru_probe` Stage A/B, entry matrix |
 | [v1.0.3](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.3) | `ktramp` full-function trampoline, real-reclaim gate, SVG infographics, README overhaul |
 | [v1.0.4](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.4) | `mglru_probe` mode 5 priority policy, A/B reclaim gate, measured stage numbers |
+| [v1.1.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.1.0) | MGLRU Stage E: generation-tier young/cold policy, shadow refault distance, `delta/pre` gate, restore/unload, `mglru_probe` 1.0.5 |
 
 ## Documentation
 

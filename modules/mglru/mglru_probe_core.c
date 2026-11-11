@@ -46,7 +46,7 @@ static struct proc_dir_entry *mpde;
 static proc_remove_fn m_remove;
 static srb_fn m_srb;
 static int policy_mode;          /* 0 off, 1 anon-light, 2 file-light, 3 aggressive */
-static unsigned long policy_changed, policy_hits;
+static unsigned long policy_changed, policy_hits, prio_gt0, prio_zero;
 static unsigned long last_nr[4];
 static unsigned long last_before[4], last_after[4];
 static unsigned long changed;
@@ -55,6 +55,7 @@ static unsigned long gpage[GTAB];
 static unsigned int ggen[GTAB];
 static unsigned long cur_gen = 1, accesses, tracked, young, last_ratio, gen_tick;
 static struct kprobe mkp = { .symbol_name = "mark_page_accessed", .pre_handler = NULL };
+static int mk_reg;
 static swb_fn m_swb;
 static char mbuf[1024];
 static char *mp = mbuf;
@@ -89,12 +90,14 @@ static int h0(struct kprobe *p, struct pt_regs *r)
 	if ((policy_mode == 4 || policy_mode == 5) && r->regs[1]) {
 		prio = (s8 *)((char *)r->regs[1] + 0x2c); /* sc->priority */
 		old = *prio;
+		if (old > 0) prio_gt0++;
 		if (policy_mode == 5)
 			*prio = 0;              /* aggressive reclaim */
 		else if (cur_gen & 1)
 			*prio = 0;              /* generation odd: aggressive */
 		else if (*prio > 1)
 			*prio = 1;              /* generation even: milder */
+		if (*prio == 0) prio_zero++;
 		if (*prio != old)
 			policy_changed++;
 		policy_hits++;
@@ -144,7 +147,7 @@ static ssize_t m_read(struct file *f, char __user *buf, size_t len, loff_t *off)
 	mp = mbuf;
 	put("mglru_probe stage B policy (write 0|1|2 to /proc/mglru_probe)\n");
 	put("policy_mode="); putdec(policy_mode);
-	put(" changed="); putdec((long)policy_changed); put(" phits="); putdec((long)policy_hits);
+	put(" changed="); putdec((long)policy_changed); put(" phits="); putdec((long)policy_hits); put(" gt0="); putdec((long)prio_gt0); put(" zero="); putdec((long)prio_zero);
 	
 	put(" changed="); putdec((long)changed);
 	put(" gen="); putdec((long)cur_gen);
@@ -202,7 +205,9 @@ static int __init m_init(void)
 			pr_err("mglru_probe: %s register failed %d\n", hook_names[i], reg_err[i]);
 	}
 	mkp.pre_handler = mk_handler;
-	if (register_kprobe(&mkp) != 0)
+	if (register_kprobe(&mkp) == 0)
+		mk_reg = 1;
+	else
 		pr_err("mglru_probe: mark_page_accessed kprobe failed\n");
 	if (pcreate && m_srb)
 		mpde = pcreate("mglru_probe", 0644, NULL, &m_pops);
@@ -219,6 +224,8 @@ static void __exit m_exit(void)
 	for (i = 0; i < NHOOKS; i++)
 		if (registered[i])
 			unregister_kprobe(&kps[i]);
+	if (mk_reg)
+		unregister_kprobe(&mkp);
 	if (mpde && m_remove)
 		m_remove(mpde);
 	pr_err("mglru_probe: exit\n");

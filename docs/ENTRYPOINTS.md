@@ -61,25 +61,50 @@ lets the wrapper call the trampoline — so the original code still runs while t
 module observes and can adjust `nr[]`.
 
 Measured under **real reclaim** (ext4 file through `loop0` + 345 MiB anonymous
-pressure, see `docs/MEASURING-RECLAIM.md`): `calls=113`, `pgscan_file=6084`,
-`pgscan_kswapd=5917`, `pgscan_direct=167`, then `patched=0` after restore.
+pressure, see `docs/MEASURING-RECLAIM.md`), Stage E gate: cold cache
+`nr_calls=108`, branch 7 (106 full-scan decisions); forced young `y80` branch 6,
+`delta20=376/736` = 51.1%; forced distance `t5` branch 1, 100%; real refault
+branch 2, `tdist=847`; then `patched=0`, `rmmod_rc=0`, `proc_gone`,
+`module_gone`.
 
 Limits:
 
-- single-CPU QEMU only — the patcher is `..._nosync`;
+- the QEMU gate is single-CPU; the module prefers `aarch64_insn_patch_text`
+  (stop_machine) when the symbol resolves, and falls back to `_nosync`;
 - the branch must be within ±128 MiB (checked; `-ERANGE` otherwise);
 - the copied prologue must not contain PC-relative instructions that break when
   relocated — checked per target, not in general;
-- a policy on `nr[]` is an experiment, not an MGLRU implementation.
+- the policy is a runtime decision model at `get_scan_count`; a custom reclaim
+  path is built from `kpatch` (function body), `ktramp` (trampoline) and
+  kprobe hooks, not from a vmscan rebuild.
+
+## Compatibility layer: no vmscan rebuild
+
+The three base modules are the compatibility layer, not just probes:
+
+| module | compatibility problem it solves |
+|---|---|
+| `kbootstrap` | vendor CFI runtime, kallsyms resolution, vermagic/MODVERSIONS, `this_module` init/exit relocations |
+| `kpatch` | replace any reachable function body, verify, restore; SMP via `aarch64_insn_patch_text` |
+| `ktramp` | full-function trampoline that still calls the original, with a policy hook on `nr[]` |
+
+vmscan entry points are reachable without rebuilding it: kprobes observe
+`shrink_node`, `shrink_node_memcgs`, `get_scan_count`, `page_referenced`,
+`shrink_slab`, `do_try_to_free_pages`, `workingset_eviction/refault`,
+`mark_page_accessed` (mglru_probe registers 6/6 and reports `reg=1 err=0`);
+`ktramp` replaces `get_scan_count` and calls the copied prologue. A custom
+reclaim policy is a composition of these hooks plus side tables — which is
+exactly what Stage E does.
 
 ## MGLRU: probe, not parity
 
-`mglru_probe` is Stage A/B: reclaim-path kprobes + a `get_scan_count`
-kretprobe with policy modes; a page-generation side table feeds mode 4.
-Observed QEMU: Stage A 426 hook hits; mode 2 `changed=305`; mode 4
-`acc=10786`, `trk=250`, `yng=250`, `ratio=100`, `before=0,0,2,3` →
-`after=0,0,1,1`. This is experimental, not full 7.4 MGLRU. 5.10 has no
-`gen_lru` fields; see `docs/MGLRU.md`.
+`mglru_probe` is Stage A/B: reclaim-path kprobes + `shrink_node` priority
+policy (mode 5). Observed QEMU: mode 0 `get_scan_count=54`, `pgscan_file=1428`;
+mode 5 `get_scan_count=84`, `pgscan_file=4478`, `changed=55/phits=84`
+(`gt0=55`, `zero=84`). Stage E is in `ktramp` 1.1.0: per-memcg generation,
+shadow refault distance, young/cold tiering. This is still not full 7.4 MGLRU:
+5.10 has no `gen_lru` fields; the explicit gap list is in
+[`BACKPORT-7.4.md`](BACKPORT-7.4.md) and [`MGLRU-STAGE-E.md`](MGLRU-STAGE-E.md).
 
 ## How this maps to backports
 

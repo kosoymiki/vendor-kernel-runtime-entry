@@ -142,8 +142,8 @@ CFI-мост — самая интересная часть. `__cfi_check` не�
 |---|---|---|---|---|
 | [`kbootstrap`](kernel/) | 1.0.0 | stable probe | CFI-мост, резолв kallsyms, raw payload, `/proc` | `payload_result=42` · `065f520b…` |
 | [`kpatch`](modules/kpatch/) | 1.0.2 | probe | save → `aarch64_insn_patch_text_nosync` → проверка → restore | `getpid 114 → 0 → 118` · `c4f9a319…` |
-| [`ktramp`](modules/ktramp/) | 1.0.3 | probe | трамплин с копированием пролога заменяет функцию целиком | `calls=113`, `pgscan_file=6084` · `bbfb599a…` |
-| [`mglru_probe`](modules/mglru/) | 1.0.4 | экспериментальный | kprobe на reclaim path + политика приоритета `shrink_node` | `changed=77/102`, `pgscan_file=5934` · `a0f4f59c…` |
+| [`ktramp`](modules/ktramp/) | 1.1.0 | экспериментальный | Stage E поколенческая политика на `get_scan_count`: young/cold, shadow refault distance, restore + unload | ветка 7 cold, `y80` 51.1%, `t5` 100%, `tdist=847` · `85d01060…` |
+| [`mglru_probe`](modules/mglru/) | 1.0.5 | экспериментальный | kprobe на reclaim path + политика приоритета `shrink_node`, чистый rmmod | `changed=55/84`, `gt0=55` · `9a142d8b…` |
 
 Смысл проекта — именно библиотека: каждый модуль собирается из этого дерева
 одним builder'ом, проходит QEMU-гейт и поставляется вместе со своим evidence.
@@ -211,8 +211,8 @@ tools/adapt_kernel.sh --profile profiles/my-device/profile.env --qemu
 |---|---|---|
 | `kbootstrap.ko` | `065f520b1b562f55eef48a138a12d4df3c18d51357bcbacb39b46d1e9a33c593` | `tests/qemu_payload_gate.sh` |
 | `kpatch.ko` | `c4f9a319feb6da9d8989bbdb15903bcb6ccce4c361c1fcd1edfc237dfe5ddf11` | `tests/qemu_probe_gate.sh` |
-| `ktramp.ko` | `bbfb599a17db566dae1eb664dbafba5de1f5568bd08ac7363ca1ceefc35b55e3` | `tests/qemu_ktramp_gate.sh` |
-| `mglru_probe.ko` | `a0f4f59c3a965d0c4b6b4551ae386b82255fc4f8f7536837cd6668db563b04ad` | `tests/qemu_mglru_gate.sh` |
+| `ktramp.ko` | `85d01060cc47d96146608ccbadedfbe3eb9d3bcae3eb9369cd5c32543468c9fd` | `tests/qemu_ktramp_gate.sh` |
+| `mglru_probe.ko` | `9a142d8b04c03a343839d38a935ad84c06f8e6e76f629d4d39fbf8a11dd53d35` | `tests/qemu_mglru_gate.sh` |
 
 Измерено в QEMU на точном стоковом `Image` (`-smp 1`, `maxcpus=1`):
 
@@ -221,13 +221,16 @@ tools/adapt_kernel.sh --profile profiles/my-device/profile.env --qemu
   `init_module+0x1c/0xfe8 [kbootstrap]` — `init_module` действительно выполнился.
 - **text patch:** первые инструкции `__arm64_sys_getpid` сохранены, записан
   `mov w0,#0; ret`, `getpid` вернул `0`, после restore — `118`.
-- **трамплин:** вход `get_scan_count` заменён ветвлением в обёртку модуля,
-  7 инструкций пролога скопированы обратно; `calls=113`, `pgscan_file=6084`,
-  `pgscan_kswapd=5917`, `pgscan_direct=167`, после restore `patched=0`.
-- **reclaim-probes:** baseline `get_scan_count` 101 hits при `pgscan_file=5934`;
-  mode 5 переписал `scan_control.priority` в 77 из 102 вызовов `shrink_node`.
-  Суммарный объём сканирования **не** сравним между прогонами — см. оговорку в
-  [`docs/MGLRU.ru.md`](docs/MGLRU.ru.md).
+- **трамплин (Stage E):** вход `get_scan_count` заменён ветвлением в обёртку
+  модуля; холодный кэш — ветка 7 (полный скан, `nr_calls=108`), форс young
+  `y80` — ветка 6 (`delta20=376/736` = 51.1%), форс distance `t5` — ветка 1
+  (100%), реальный refault — ветка 2 (`tdist=847`); `patched=0`, `rmmod_rc=0`,
+  `proc_gone`, `module_gone`.
+- **reclaim-probes:** baseline `get_scan_count=54`, `pgscan_file=1428`; mode 5
+  `get_scan_count=84`, `pgscan_file=4478`, `changed=55/phits=84`
+  (`gt0=55`, `zero=84`). Накопленные суммы несравнимы между прогонами —
+  fixed-endpoint метрика `delta/pre` в `ktramp` 1.1.0; см.
+  [`docs/MGLRU-STAGE-E.ru.md`](docs/MGLRU-STAGE-E.ru.md).
 - **payload:** `/proc/kbootstrap` отдаёт `payload_result=42`.
 
 Как именно создаётся reclaim-нагрузка (и почему `tmpfs` не работает) —
@@ -244,8 +247,8 @@ tools/adapt_kernel.sh --profile profiles/my-device/profile.env --qemu
 | M0 вход | **готово** | LKM + CFI-мост + raw payload |
 | M1 text patch | **готово** | save / patch / verify / restore |
 | M2 трамплин | **готово** | замена функции целиком |
-| M3 policy hooks | **в работе** | режимы reclaim-политики, side table поколений, SMP-safe патчинг |
-| M4 бэкпорт 7.4 | следующее | функции vmscan, workingset refault distance, folio |
+| M3 policy hooks | **готово** | Stage E поколенческая политика, shadow refault distance, SMP-safe патчинг, restore/unload |
+| M4 бэкпорт 7.4 | следующее | parity-subset и gap-report: часы `min_seq/max_seq`, per-generation LRU-списки, folio-пути |
 | M5 parity | план | бенчмарки, gap-report, parity-subset |
 
 Probe — это не бэкпорт. M3/M4 закрываются только с поведенческим evidence в
@@ -261,6 +264,7 @@ QEMU и явным списком пробелов; дельта 5.10 → 7.4 и
 | [v1.0.2](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.2) | `kpatch` (text patch), `mglru_probe` Stage A/B, матрица входа |
 | [v1.0.3](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.3) | `ktramp` (трамплин), real-reclaim гейт, SVG-инфографика, новый README |
 | [v1.0.4](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.4) | `mglru_probe` mode 5 (политика приоритета), A/B reclaim-гейт, измеренные числа стадии |
+| [v1.1.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.1.0) | MGLRU Stage E: поколенческая young/cold-политика, shadow refault distance, `delta/pre`-гейт, restore/unload, `mglru_probe` 1.0.5 |
 
 ## Документация
 

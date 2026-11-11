@@ -60,24 +60,50 @@ CFI-проверки **для этого модуля**; это не глоба�
 `nr[]`.
 
 Измерено под **реальным reclaim** (ext4-файл через `loop0` + 345 MiB анонимного
-давления, см. `docs/MEASURING-RECLAIM.md`): `calls=113`, `pgscan_file=6084`,
-`pgscan_kswapd=5917`, `pgscan_direct=167`, затем `patched=0` после restore.
+давления, см. `docs/MEASURING-RECLAIM.md`), гейт Stage E: холодный кэш
+`nr_calls=108`, ветка 7 (106 решений полного скана); форс young `y80` — ветка 6,
+`delta20=376/736` = 51.1%; форс distance `t5` — ветка 1, 100%; реальный refault
+— ветка 2, `tdist=847`; затем `patched=0`, `rmmod_rc=0`, `proc_gone`,
+`module_gone`.
 
 Границы:
 
-- только single-CPU QEMU — патчер `..._nosync`;
+- QEMU-гейт single-CPU; модуль предпочитает `aarch64_insn_patch_text`
+  (stop_machine), когда символ резолвится, и откатывается на `_nosync`;
 - ветвление должно быть в пределах ±128 MiB (проверяется, иначе `-ERANGE`);
 - скопированный пролог не должен содержать PC-relative инструкций, ломающихся
   при переносе — проверяется на конкретной цели, не в общем виде;
-- политика на `nr[]` — эксперимент, не реализация MGLRU.
+- политика — runtime-модель решений на `get_scan_count`; кастомный reclaim
+  path собирается из `kpatch` (тело функции), `ktramp` (трамплин) и kprobe-хуков,
+  а не из пересборки vmscan.
+
+## Слой совместимости: без пересборки vmscan
+
+Три базовых модуля — это слой совместимости, а не только probe:
+
+| модуль | какую проблему совместимости решает |
+|---|---|
+| `kbootstrap` | vendor CFI runtime, резолв kallsyms, vermagic/MODVERSIONS, reloc init/exit `this_module` |
+| `kpatch` | замена тела любой достижимой функции, проверка, restore; SMP через `aarch64_insn_patch_text` |
+| `ktramp` | трамплин целой функции с вызовом оригинала и policy-хуком на `nr[]` |
+
+Точки входа vmscan достижимы без пересборки: kprobes наблюдают `shrink_node`,
+`shrink_node_memcgs`, `get_scan_count`, `page_referenced`, `shrink_slab`,
+`do_try_to_free_pages`, `workingset_eviction/refault`, `mark_page_accessed`
+(mglru_probe регистрирует 6/6 и печатает `reg=1 err=0`); `ktramp` заменяет
+`get_scan_count` и вызывает скопированный пролог. Кастомная reclaim-политика —
+композиция этих хуков и side table; именно это делает Stage E.
 
 ## MGLRU: probe, не parity
 
-`mglru_probe` — Stage A/B: kprobe на reclaim path + kretprobe на
-`get_scan_count` с режимами; side table поколений для mode 4. QEMU: Stage A
-426 hits; mode 2 `changed=305`; mode 4 `acc=10786`, `trk=250`, `yng=250`,
-`ratio=100`, `before=0,0,2,3` → `after=0,0,1,1`. Это эксперимент, не полный
-7.4 MGLRU. В 5.10 нет `gen_lru`; см. `docs/MGLRU.md`.
+`mglru_probe` — Stage A/B: kprobe на reclaim path + priority-политика на
+`shrink_node` (mode 5). QEMU: mode 0 `get_scan_count=54`, `pgscan_file=1428`;
+mode 5 `get_scan_count=84`, `pgscan_file=4478`, `changed=55/phits=84`
+(`gt0=55`, `zero=84`). Stage E — в `ktramp` 1.1.0: per-memcg поколения,
+shadow-refault distance, young/cold-тиринг. Это всё ещё не полный 7.4 MGLRU:
+в 5.10 нет `gen_lru`; явный gap-list — в
+[`BACKPORT-7.4.ru.md`](BACKPORT-7.4.ru.md) и
+[`MGLRU-STAGE-E.ru.md`](MGLRU-STAGE-E.ru.md).
 
 ## Как это ложится на бэкпорт
 

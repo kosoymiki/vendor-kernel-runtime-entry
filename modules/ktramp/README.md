@@ -38,20 +38,26 @@ Gate: [`tests/qemu_ktramp_gate.sh`](../../tests/qemu_ktramp_gate.sh) —
 ext4 file through `loop0`, 345 MiB anonymous pressure, poll `pgscan_file`.
 
 ```
-ktramp target=0xffffffc00843c0c0 tramp=0xffffffc001a36000 patched=1 calls=0
-pgscan_file 0
-...
-ktramp ... patched=1 calls=113
-pgscan_kswapd 5917  pgscan_direct 167  pgscan_file 6084
-ktramp ... patched=0 calls=113      # restored
-PASS ktramp gate (calls=113, patched, restored)
+=== KTRAMP cold ===
+ktramp ... patched=1 policy=1 nr_calls=108
+branch=0,0,0,2,0,0,106   yc=0/398   pre20=610 delta20=2
+PASS cold: policy=1 nr_calls>0 branch6/7 (0/106)
+PASS y80: branch6=127 delta20=376 pre20=736 (>=40%)
+PASS t5: branch1=80 delta20=8703 pre20=8703 (100%)
+PASS ref: branch2=137 tdist=847
+PASS restore: patched=0 rmmod_rc=0 proc_gone=1 module_gone=1
+PASS ktramp Stage E gate
 ```
 
 Artifact: `ktramp.ko`, sha256
-`bbfb599a17db566dae1eb664dbafba5de1f5568bd08ac7363ca1ceefc35b55e3`.
+`85d01060cc47d96146608ccbadedfbe3eb9d3bcae3eb9369cd5c32543468c9fd`.
 
-`calls=113` with `pgscan_file=6084` is the important pair: the wrapper was
-entered by genuine reclaim, not by a synthetic call.
+The wrapper is entered by genuine reclaim; the Stage E policy then makes a
+generation-tier decision: cold pages get the full scan (branch 7), a young
+working set is protected (branch 6, 51.1% suppression under `y80`), a small
+refault distance zeroes file scans (branch 1, 100% under `t5`), and a real
+refault halves them (branch 2, `tdist=847`). Restore and unload are proven in
+the same gate.
 
 ## What this proves, and what it does not
 
@@ -61,12 +67,14 @@ calls the original implementation, then restored. That is the mechanism a 7.4
 
 **Does not prove:**
 
-- SMP safety — `aarch64_insn_patch_text_nosync` does not stop other CPUs; the
-  gate runs `-smp 1`. On a live device use `aarch64_insn_patch_text` /
-  `stop_machine`, then verify under load.
+- SMP safety on a live device — the module prefers `aarch64_insn_patch_text`
+  (stop_machine) when the symbol resolves and falls back to `_nosync`; the QEMU
+  gate runs `-smp 1`, so live SMP load testing is still required.
 - branch reachability beyond ±128 MiB (checked, `-ERANGE` otherwise);
-- that the policy is *good*: `nr[2]=nr[3]=0` is a blunt "protect page cache"
-  experiment, not an MGLRU implementation.
+- full MGLRU parity: the policy runs at `get_scan_count`; a custom reclaim path
+  is composed from `kpatch`/`ktramp`/kprobe hooks and side tables, not from a
+  vmscan rebuild. The exact `min_seq/max_seq` clock and per-generation LRU lists
+  remain M4 fidelity work (see `docs/BACKPORT-7.4.md`).
 
 ## Safety
 

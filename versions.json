@@ -1,9 +1,9 @@
 {
   "_comment": "Single source of truth for release and module metadata. tools/make_assets.py renders it into the SVGs; tools/check_versions.py enforces that nothing drifts. Bump here first, then run the checklist in docs/RELEASE.md.",
   "release": {
-    "version": "1.0.4",
-    "versionCode": 5,
-    "date": "2026-11-10"
+    "version": "1.1.0",
+    "versionCode": 6,
+    "date": "2026-11-11"
   },
   "modules": [
     {
@@ -26,45 +26,77 @@
     },
     {
       "name": "ktramp",
-      "version": "1.0.3",
-      "status": "probe",
-      "sha256": "bbfb599a17db566dae1eb664dbafba5de1f5568bd08ac7363ca1ceefc35b55e3",
+      "version": "1.1.0",
+      "status": "experimental",
+      "sha256": "85d01060cc47d96146608ccbadedfbe3eb9d3bcae3eb9369cd5c32543468c9fd",
       "gate": "tests/qemu_ktramp_gate.sh",
-      "note": "copied-prologue trampoline over a whole function",
+      "note": "Stage E generation-tier policy: per-memcg generation, young/cold, shadow refault distance",
       "dir": "modules/ktramp"
     },
     {
       "name": "mglru_probe",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "status": "experimental",
-      "sha256": "a0f4f59c3a965d0c4b6b4551ae386b82255fc4f8f7536837cd6668db563b04ad",
+      "sha256": "9a142d8b04c03a343839d38a935ad84c06f8e6e76f629d4d39fbf8a11dd53d35",
       "gate": "tests/qemu_mglru_gate.sh",
-      "note": "reclaim-path kprobes + shrink_node priority policy (mode 5)",
+      "note": "reclaim-path kprobes + shrink_node priority policy (mode 5), prio counters, clean rmmod",
       "dir": "modules/mglru"
     }
   ],
   "evidence": {
     "ktramp": {
-      "calls": 113,
-      "pgscan_file": 6084,
-      "pgscan_kswapd": 5917,
-      "pgscan_direct": 167,
-      "log": "$PREFIX/tmp/ktramp-gate.*/serial.log"
+      "calls": 108,
+      "log": "$PREFIX/tmp/ktramp-stagee.*/serial-*.log",
+      "stage_e": {
+        "cold": {
+          "branch7": 106,
+          "pre20": 610,
+          "delta20": 2,
+          "yc": "0/398",
+          "nr_calls": 108
+        },
+        "y80": {
+          "branch6": 127,
+          "pre20": 736,
+          "delta20": 376,
+          "suppression_pct": 51.1
+        },
+        "t5": {
+          "branch1": 80,
+          "pre20": 8703,
+          "delta20": 8703,
+          "suppression_pct": 100.0
+        },
+        "refault": {
+          "branch2": 137,
+          "tdist": 847
+        },
+        "restore": {
+          "patched": "1->0",
+          "rmmod_rc": 0,
+          "proc_gone": true,
+          "module_gone": true
+        }
+      }
     },
     "mglru": {
       "mode0": {
-        "get_scan_count_hits": 101,
-        "page_referenced_hits": 5266,
-        "pgscan_file": 5934,
-        "pgscan_kswapd": 5768,
-        "pgscan_direct": 166
+        "get_scan_count_hits": 54,
+        "page_referenced_hits": 1428,
+        "pgscan_file": 1428,
+        "pgscan_kswapd": 930,
+        "pgscan_direct": 498
       },
       "mode5": {
-        "get_scan_count_hits": 102,
-        "page_referenced_hits": 4436,
-        "pgscan_file": 4880,
-        "policy_changed": 77,
-        "policy_hits": 102
+        "get_scan_count_hits": 84,
+        "page_referenced_hits": 3977,
+        "pgscan_file": 4478,
+        "pgscan_kswapd": 4198,
+        "pgscan_direct": 280,
+        "policy_changed": 55,
+        "policy_hits": 84,
+        "prio_gt0": 55,
+        "prio_zero": 84
       },
       "log": "$PREFIX/tmp/mglru-gate.*/serial.log"
     }

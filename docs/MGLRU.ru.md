@@ -1,4 +1,4 @@
-# MGLRU probe: статус Stage A/B (экспериментально)
+# MGLRU probe: статус Stage A/B/E (экспериментально)
 
 `modules/mglru` — **probe**, не полный backport 7.4 MGLRU. Он измеряет reclaim
 path 5.10 и проверяет generation-aware политики через доказанный entry.
@@ -14,6 +14,12 @@ path 5.10 и проверяет generation-aware политики через д�
     поколений страниц;
   - `5` priority policy — на входе `shrink_node` выставляет
     `scan_control.priority` в 0 (агрессивный reclaim).
+- **Stage E (поколенческая политика, `ktramp` 1.1.0):** `mark_page_accessed`
+  сохраняет поколения страниц, вытеснение классифицирует young/cold, а
+  трамплин `get_scan_count` защищает молодой рабочий набор или оставляет
+  полный скан, когда доминируют холодные страницы. Shadow-refault distance и
+  per-memcg атрибуция — в том же модуле. Детали:
+  [`MGLRU-STAGE-E.ru.md`](MGLRU-STAGE-E.ru.md).
 - kprobe на `mark_page_accessed` заполняет side table поколений (1024 записи).
 
 Mode 5 берёт `scan_control` из `regs[1]` и пишет поле `s8 priority` по оффсету
@@ -36,22 +42,22 @@ Return-handler не срабатывал (`modified=0`, `nmissed=0`): kprobe н�
 
 | метрика | mode 0 (baseline) | mode 5 (priority policy) |
 |---|---|---|
-| `shrink_node` hits | 101 | 102 |
-| `get_scan_count` hits | 101 | 102 |
-| `page_referenced` hits | 5266 | 4436 |
-| `pgscan_file` | 5934 | 4880 |
-| `pgscan_kswapd` | 5768 | 4655 |
-| `pgscan_direct` | 166 | 225 |
-| записей политики | — | `changed=77` / `phits=102` |
+| `get_scan_count` hits | 54 | 84 |
+| `page_referenced` hits | 1428 | 3977 |
+| `pgscan_file` | 1428 | 4478 |
+| `pgscan_kswapd` | 930 | 4198 |
+| `pgscan_direct` | 498 | 280 |
+| записей политики | — | `changed=55` / `phits=84` (`gt0=55`, `zero=84`) |
 
-**Что доказано:** хук срабатывает и переписывает `scan_control.priority` в 77
-из 102 вызовов `shrink_node`. Это детерминированный факт в ядре.
+**Что доказано:** хук срабатывает и переписывает `scan_control.priority` в 55
+из 84 вызовов `shrink_node` (`gt0=55`, `zero=84`). Это детерминированный факт
+в ядре.
 
-**Что не доказано:** что политика меняет *объём* сканирования. `pgscan_file` —
-накопленный счётчик, а нагрузка обрывается OOM-killer'ом в разной точке: пара
-независимых прогонов того же гейта дала `4178` (mode 0) против `6834` (mode 5),
-то есть противоположное направление. Суммы между прогонами несравнимы; вопрос
-закрывается только fixed-endpoint измерением.
+**Почему накопленный `pgscan_file` — не метрика:** это running total, а
+нагрузка обрывается OOM-killer'ом в разной точке; пара независимых прогонов
+дала `4178` (mode 0) против `6834` (mode 5) — противоположное направление.
+Суммы между прогонами несравнимы. `ktramp` 1.1.0 закрывает это fixed-endpoint
+метрикой `delta/pre` на 20-м и 40-м вызовах `get_scan_count`.
 
 ## Почему это не «MGLRU backported»
 
@@ -63,14 +69,13 @@ Return-handler не срабатывал (`modified=0`, `nmissed=0`): kprobe н�
 
 ## Следующие стадии
 
-- **Fixed-endpoint измерение:** сумма `nr[]` на каждый вызов `get_scan_count`
-  (трамплин `ktramp` её уже видит) и медианы по нескольким прогонам без выхода
-  на OOM.
-- **Stage C:** заменить выбранные `vmscan`-функции 7.4-вдохновлёнными
-  реализациями через трамплин. На SMP — `aarch64_insn_patch_text` +
-  `stop_machine`, не `_nosync`.
-- **Stage D:** parity-subset + бенчмарки (pgscan, refault, latency, working set)
-  с явным gap-list.
+- **Stage C/D/E уже в `ktramp` 1.1.0:** full-function трамплин с SMP-safe
+  патчингом, per-memcg таблицы поколений, shadow-refault distance,
+  young/cold-тиринг, fixed per-call `delta/pre`, restore и unload. См.
+  [`MGLRU-STAGE-E.ru.md`](MGLRU-STAGE-E.ru.md).
+- **M4 (дальше):** parity-subset и gap-report против 7.4 MGLRU
+  (`min_seq/max_seq`-часы, per-generation LRU-списки, folio-пути) с явным
+  списком того, что runtime-модуль заменить не может.
 
 ## Как правильно измерять reclaim
 

@@ -1,128 +1,137 @@
 #!/usr/bin/env bash
-# ktramp gate: load the trampoline module, prove the wrapper is actually called
-# by the reclaim path, then prove restore. QEMU single-CPU only.
+# ktramp Stage E gate: prove the generation-tier policy on the real reclaim
+# path, one QEMU boot per regime, then restore + unload.
 #
-# Why a dedicated gate (and not tests/qemu_probe_gate.sh): a trampoline is not
-# proven by reading a proc file — it is proven by *call counts under real
-# reclaim*. Two details make that measurable on a swapless VM:
+# Regimes:
+#   cold     ext4 page cache + fillmem: cold pages dominate -> branch 7
+#            (full scan) or branch 6 (young working set)
+#   y80      forced young/cold 80/20 -> branch 6, >=40% scan suppression
+#   t5       forced refault distance 5 -> branch 1, 100% file suppression
+#   ref      MADV_PAGEOUT + refault of 128 KiB -> branch 2 (d > 32)
+#   restore  patch on -> restore -> rmmod -> proc/module gone
 #
-#   1. tmpfs/shmem pages are NOT reclaimable without swap, and normal file
-#      reads are satisfied from cache silently — neither runs the scanner.
-#   2. Anonymous memory is unreclaimable, so allocating it is what pushes the
-#      zone past its watermark and forces the file-LRU scan that calls
-#      get_scan_count.
-#
-# So the workload reads block-device page cache from two brd ramdisks, then
-# runs tests/fillmem.c (raw-syscall static helper) to drive kswapd/direct
-# reclaim while the trampoline is installed.
-#
-# Env: KB_IMAGE, KB_KO, KB_MEM (default 512), BUSYBOX, QEMU, CC, QEMU_TIMEOUT
+# Env: KB_IMAGE, KB_KO (required), KB_MEM (512), BUSYBOX, QEMU, CC.
 set -euo pipefail
 KB_IMAGE=${KB_IMAGE:?}; KB_KO=${KB_KO:?}
 KB_MEM=${KB_MEM:-512}
 CC=${CC:-clang}
 BUSYBOX=${BUSYBOX:-$HOME/ae-qemu-gate/bin/busybox}; QEMU=${QEMU:-qemu-system-aarch64}
 HERE=$(cd "$(dirname "$0")" && pwd)
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/ktramp-stagee.XXXXXX")
 
-TMP=$(mktemp -d "${TMPDIR:-/tmp}/ktramp-gate.XXXXXX"); ROOT=$TMP/root
-mkdir -p "$ROOT"/{bin,proc,sys,dev,tmp,module,mnt}
-cp -f "$BUSYBOX" "$ROOT/bin/busybox"; chmod 755 "$ROOT/bin/busybox"
-for a in sh mount insmod cat echo dmesg grep sleep poweroff mknod dd mkdir sync losetup ls; do
-  ln -sf busybox "$ROOT/bin/$a"
-done
-cp -f "$KB_KO" "$ROOT/module/ktramp.ko"
-
-# --- static anon-memory helper (no libc, runs on the bare Image) -----------
-"$CC" -O2 -static -nostdlib -fno-stack-protector -ffreestanding \
-      -Wl,-e,_start -o "$ROOT/fillmem" "$HERE/fillmem.c"
-chmod 755 "$ROOT/fillmem"
-
-# --- evictable file workload: a real ext4 file through a loop device -------
-# brd block-device reads do NOT populate the file LRU on this kernel (observed
-# inactive_file:0), so the only reliable file pages come from a regular file
-# mapping. A sparse zero file keeps the initramfs small after gzip.
+# --- workload image: real ext4 file through loop0 -------------------------
 truncate -s 40M "$TMP/disk.img"
 mke2fs -t ext4 -F -q -b 4096 "$TMP/disk.img" >/dev/null 2>&1
 truncate -s 32M "$TMP/bigfile"
 debugfs -w -R "write $TMP/bigfile big" "$TMP/disk.img" >/dev/null 2>&1
-ls -la "$TMP/disk.img"
-cp -f "$TMP/disk.img" "$ROOT/disk.img"
 
-cat > "$ROOT/init" <<'INIT'
+"$CC" -O2 -static -nostdlib -fno-stack-protector -ffreestanding \
+      -Wl,-e,_start -o "$TMP/fillmem" "$HERE/fillmem.c"
+"$CC" -O2 -static -nostdlib -fno-stack-protector -ffreestanding \
+      -Wl,-e,_start -o "$TMP/faultout" "$HERE/faultout.c"
+chmod 755 "$TMP/fillmem" "$TMP/faultout"
+
+run_one() { # label mode ref
+	local label=$1 mode=$2 ref=$3
+	local root="$TMP/root-$label" log="$TMP/serial-$label.log"
+	mkdir -p "$root"/{bin,proc,sys,dev,tmp,module,mnt}
+	cp -f "$BUSYBOX" "$root/bin/busybox"; chmod 755 "$root/bin/busybox"
+	for a in sh mount insmod rmmod cat echo dmesg grep sleep mknod dd mkdir sync losetup sed tail; do
+		ln -sf busybox "$root/bin/$a"
+	done
+	cp -f "$KB_KO" "$root/module/ktramp.ko"
+	cp -f "$TMP/disk.img" "$root/disk.img"
+	cp -f "$TMP/fillmem" "$root/fillmem"; chmod 755 "$root/fillmem"
+	cp -f "$TMP/faultout" "$root/faultout"; chmod 755 "$root/faultout"
+	cat > "$root/init" <<INIT
 #!/bin/sh
 export PATH=/bin
 mount -t proc proc /proc; mount -t sysfs sysfs /sys; mount -t tmpfs tmpfs /tmp
-for x in 'null 1 3' 'zero 1 5' 'console 5 1' 'kmsg 1 11'; do set -- $x; mknod /dev/$1 c $2 $3 2>/dev/null; done
-mknod /dev/loop0 b 7 0
-mkdir -p /mnt
-echo "=== READY ==="
-grep MemTotal /proc/meminfo
-insmod /module/ktramp.ko; echo "insmod_rc=$?"
-cat /proc/modules | grep ktramp || true
-# evictable page cache: a regular file mapping on an ext4 loop device
-losetup /dev/loop0 /disk.img; echo "loop_rc=$?"
-mount -t ext4 -o ro /dev/loop0 /mnt; echo "mount_rc=$?"
-ls -l /mnt/big
+for x in 'null 1 3' 'zero 1 5' 'console 5 1' 'kmsg 1 11'; do set -- \$x; mknod /dev/\$1 c \$2 \$3 2>/dev/null; done
+mknod /dev/loop0 b 7 0 2>/dev/null
+echo "=== KTRAMP $label ==="
+insmod /module/ktramp.ko; echo "insmod_rc=\$?"
+losetup /dev/loop0 /disk.img; echo "loop_rc=\$?"
+if [ "$ref" = 1 ]; then mount -t ext4 /dev/loop0 /mnt; else mount -t ext4 -o ro /dev/loop0 /mnt; fi
+echo "mount_rc=\$?"
 cat /mnt/big > /dev/null
-cat /mnt/big > /dev/null
-echo "=== BASELINE ==="
-grep -E "^(MemFree|MemAvailable|Cached):" /proc/meminfo
-cat /proc/ktramp
-grep -E "^(pgscan_file|pgscan_direct|pgscan_kswapd)" /proc/vmstat
-echo 1 > /proc/ktramp; echo "patch_rc=$?"
-echo "=== PRESSURE ==="
-# background: the pages must still be resident when we read the counters.
-# TCG is slow, so poll until the allocation has actually eaten the free memory
-# instead of guessing a sleep duration.
-# 380 MiB of anon on a 470 MiB VM: free alone is not enough, the allocation has
-# to exceed free+cache so the zone crosses its watermark and kswapd/direct
-# reclaim scans the file LRU. Poll the actual signal (pgscan_file), not a guess.
+if [ "$ref" = 1 ]; then ./faultout /mnt/big 0 128; fi
+echo "$mode" > /proc/ktramp; echo "mode_rc=\$?"
 ./fillmem 345 &
-i=0; S=0
-while [ $i -lt 120 ]; do
-  S=$(grep '^pgscan_file ' /proc/vmstat | grep -o '[0-9]*')
-  [ "${S:-0}" -gt 0 ] && break
-  sleep 1
-  i=$((i+1))
+i=0
+while [ \$i -lt 120 ]; do
+  C=\$(cat /proc/ktramp | sed -n 's/.*nr_calls=\([0-9]*\).*/\1/p')
+  [ "\${C:-0}" -ge 20 ] && break
+  sleep 1; i=\$((i+1))
 done
-echo "poll_steps=$i pgscan_file=$S free_kb=$(grep MemFree /proc/meminfo | grep -o '[0-9]*')"
-echo "=== PATCHED ==="
-grep -E "^(MemFree|MemAvailable|Cached):" /proc/meminfo
+echo "poll=\$i nr_calls=\${C:-0}"
+echo "=== COUNTERS ==="
 cat /proc/ktramp
-grep -E "^(pgscan_file|pgscan_direct|pgscan_kswapd)" /proc/vmstat
-echo 0 > /proc/ktramp; echo "restore_rc=$?"
-echo "=== RESTORED ==="
-cat /proc/ktramp
+if [ "$label" = "restore" ]; then
+  echo 0 > /proc/ktramp; echo "restore_rc=\$?"
+  cat /proc/ktramp
+  rmmod ktramp; echo "rmmod_rc=\$?"
+  [ -f /proc/ktramp ] && echo proc_still_present || echo proc_gone
+  grep -q '^ktramp ' /proc/modules && echo module_still_loaded || echo module_gone
+fi
 echo "=== DONE ==="
-exec sleep 3600
+while true; do sleep 5; done
 INIT
-chmod 755 "$ROOT/init"
-( cd "$ROOT" && find . -print0 | cpio --null -o -H newc 2>/dev/null | gzip -1 > "$TMP/initramfs.cpio.gz" )
+	chmod 755 "$root/init"
+	( cd "$root" && find . -print0 | cpio --null -o -H newc 2>/dev/null | gzip -1 > "$TMP/initramfs-$label.cpio.gz" )
+	timeout 75 "$QEMU" -M virt -cpu cortex-a72 -smp 1 -m "$KB_MEM" \
+		-accel tcg,thread=single -kernel "$KB_IMAGE" \
+		-initrd "$TMP/initramfs-$label.cpio.gz" \
+		-append "console=ttyAMA0 nokaslr rdinit=/init panic=-1 loglevel=7 maxcpus=1" \
+		-nographic -no-reboot > "$log" 2>&1 || true
+	sed -n '/=== COUNTERS ===/,/=== DONE ===/p' "$log" | tr -d '\r' > "$TMP/counters-$label.txt"
+}
 
-"$QEMU" -M virt -cpu cortex-a72 -smp 1 -m "$KB_MEM" -accel tcg,thread=single \
-  -kernel "$KB_IMAGE" -initrd "$TMP/initramfs.cpio.gz" \
-  -append "console=ttyAMA0 nokaslr rdinit=/init panic=-1 loglevel=7 maxcpus=1" \
-  -nographic -no-reboot > "$TMP/serial.log" 2>&1 &
-QPID=$!
-DONE=0
-for _ in $(seq 1 "${QEMU_TIMEOUT:-600}"); do
-  if grep -q "=== DONE ===" "$TMP/serial.log" 2>/dev/null; then DONE=1; break; fi
-  kill -0 "$QPID" 2>/dev/null || break
-  sleep 1
-done
-kill "$QPID" 2>/dev/null || true
-wait "$QPID" 2>/dev/null || true
-RC=$([ "$DONE" = 1 ] && echo 0 || echo 1)
-echo "qemu_rc=$RC log=$TMP/serial.log"
-sed -n '/=== READY ===/,/=== DONE ===/p' "$TMP/serial.log" | grep -vE '^\s*$'
+field() { # label field
+	sed -n 's/.*'"$2"'=\([^ ]*\).*/\1/p' "$TMP/counters-$1.txt" | head -1
+}
+branch() { # label index
+	local b; b=$(field "$1" branch)
+	[ -n "$b" ] && printf '%s' "$b" | cut -d, -f"$2" || echo 0
+}
+fail=0
+check() { if [ "$1" = 1 ]; then echo "PASS $2"; else echo "FAIL $2"; fail=1; fi; }
 
-grep -q "insmod_rc=0" "$TMP/serial.log" || { echo "FAIL insmod"; exit 1; }
-grep -q "patch_rc=0"   "$TMP/serial.log" || { echo "FAIL patch"; exit 1; }
-grep -q "restore_rc=0" "$TMP/serial.log" || { echo "FAIL restore"; exit 1; }
-grep -q "patched=1"    "$TMP/serial.log" || { echo "FAIL not patched"; exit 1; }
-grep -q "patched=0"    "$TMP/serial.log" || { echo "FAIL restore state"; exit 1; }
-CALLS=$(sed -n '/=== PATCHED ===/,/=== RESTORED ===/p' "$TMP/serial.log" | grep -o 'calls=[0-9]*' | head -1 | cut -d= -f2)
-echo "calls=$CALLS"
-[ -n "${CALLS:-}" ] && [ "$CALLS" -gt 0 ] || { echo "FAIL wrapper never called"; exit 1; }
-if sed -n "1,/=== DONE ===/p" "$TMP/serial.log" | grep -qE "Oops|Unable to handle|Kernel panic|BUG: "; then echo "FAIL kernel fault"; exit 1; fi
-echo "PASS ktramp gate (calls=$CALLS, patched, restored)"
+# 1. cold working set: policy must run and take a generation-tier branch.
+run_one cold 2 0
+cold_policy=$(field cold policy); cold_calls=$(field cold nr_calls)
+cold_b6=$(branch cold 6); cold_b7=$(branch cold 7)
+check "$([ "$cold_policy" = 1 ] && [ "${cold_calls:-0}" -gt 0 ] && [ $((cold_b6 + cold_b7)) -gt 0 ] && echo 1 || echo 0)" \
+      "cold: policy=1 nr_calls>0 branch6/7 ($cold_b6/$cold_b7)"
+echo "COUNTERS cold: $(grep "ktramp target=" "$TMP/counters-cold.txt" | head -1)"
+
+# 2. forced young working set: branch 6 and >=40% suppression.
+run_one y80 y80 0
+y_b6=$(branch y80 6); y_pre=$(field y80 pre20); y_delta=$(field y80 delta20)
+y_ok=0
+if [ "${y_b6:-0}" -gt 0 ] && [ "${y_pre:-0}" -gt 0 ] && [ $((y_delta * 100)) -ge $((y_pre * 40)) ]; then y_ok=1; fi
+check "$y_ok" "y80: branch6=$y_b6 delta20=$y_delta pre20=$y_pre (>=40%)"
+
+# 3. forced small refault distance: branch 1 and 100% file suppression.
+run_one t5 t5 0
+t_b1=$(branch t5 1); t_pre=$(field t5 pre20); t_delta=$(field t5 delta20)
+t_ok=0
+if [ "${t_b1:-0}" -gt 0 ] && [ "${t_pre:-0}" -gt 0 ] && [ "$t_delta" = "$t_pre" ]; then t_ok=1; fi
+check "$t_ok" "t5: branch1=$t_b1 delta20=$t_delta pre20=$t_pre (100%)"
+
+# 4. real refault (MADV_PAGEOUT of 128 KiB): branch 2.
+run_one ref 2 1
+r_b2=$(branch ref 2); r_td=$(field ref tdist)
+check "$([ "${r_b2:-0}" -gt 0 ] && echo 1 || echo 0)" "ref: branch2=$r_b2 tdist=$r_td"
+
+# 5. restore + unload.
+run_one restore 1 0
+r_patched=$(sed -n 's/.*patched=\([0-9]*\).*/\1/p' "$TMP/counters-restore.txt" | tail -1)
+r_rmmod=$(field restore rmmod_rc)
+r_proc=$(grep -c '^proc_gone$' "$TMP/counters-restore.txt" || true)
+r_mod=$(grep -c '^module_gone$' "$TMP/counters-restore.txt" || true)
+check "$([ "$r_patched" = 0 ] && [ "$r_rmmod" = 0 ] && [ "$r_proc" = 1 ] && [ "$r_mod" = 1 ] && echo 1 || echo 0)" \
+      "restore: patched=$r_patched rmmod_rc=$r_rmmod proc_gone=$r_proc module_gone=$r_mod"
+
+echo "logs: $TMP"
+[ "$fail" = 0 ] && echo "PASS ktramp Stage E gate" || { echo "FAIL ktramp Stage E gate"; exit 1; }
