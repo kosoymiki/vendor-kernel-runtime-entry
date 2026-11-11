@@ -23,11 +23,14 @@ echo "=== VMSSCAN HOOK ==="
 insmod /module/vmscan_hook.ko; echo "insmod_rc=$?"
 losetup /dev/loop0 /disk.img; mount -t ext4 -o ro /dev/loop0 /mnt
 cat /mnt/big > /dev/null
+while true; do cat /mnt/big > /dev/null; done &
+echo t20000 > /proc/vmscan_hook
 echo 1 > /proc/vmscan_hook; echo "hook_rc=$?"
 ./fillmem 345 &
 i=0; while [ $i -lt 90 ]; do S=$(grep '^pgscan_file ' /proc/vmstat | grep -o '[0-9]*'); [ "${S:-0}" -gt 0 ] && break; sleep 1; i=$((i+1)); done
 echo "poll=$i pgscan=${S:-0}"
 echo "=== COUNTERS ==="; cat /proc/vmscan_hook
+grep -qE "moved=[1-9]" /proc/vmscan_hook && echo "PASS moved>0" || echo "FAIL moved=0"
 echo 0 > /proc/vmscan_hook; echo "restore_rc=$?"; cat /proc/vmscan_hook
 rmmod vmscan_hook; echo "rmmod_rc=$?"
 [ -f /proc/vmscan_hook ] && echo proc_still_present || echo proc_gone

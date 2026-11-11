@@ -25,13 +25,16 @@ insmod /module/ktramp.ko; echo "kt_ins=$?"
 insmod /module/vmscan_hook.ko; echo "vh_ins=$?"
 losetup /dev/loop0 /disk.img; mount -t ext4 -o ro /dev/loop0 /mnt
 cat /mnt/big > /dev/null
+while true; do cat /mnt/big > /dev/null; done &
 echo 2 > /proc/ktramp; echo "kt_mode=$?"
+echo t20000 > /proc/vmscan_hook
 echo 1 > /proc/vmscan_hook; echo "vh_mode=$?"
 ./fillmem 345 &
 i=0; while [ $i -lt 90 ]; do S=$(grep '^pgscan_file ' /proc/vmstat | grep -o '[0-9]*'); [ "${S:-0}" -gt 0 ] && break; sleep 1; i=$((i+1)); done
 echo "poll=$i pgscan=${S:-0}"
 echo "=== KT ==="; cat /proc/ktramp
 echo "=== VH ==="; cat /proc/vmscan_hook
+grep -qE "moved=[1-9]" /proc/vmscan_hook && echo "PASS stack moved>0" || echo "FAIL stack moved=0"
 echo 0 > /proc/vmscan_hook; echo "vh_off=$?"
 echo 0 > /proc/ktramp; echo "kt_off=$?"
 rmmod vmscan_hook; echo "vh_rm=$?"
@@ -52,6 +55,7 @@ chk() { if echo "$OUT" | grep -qE "$1"; then echo "PASS $2"; else echo "FAIL $2"
 chk 'ktramp .*policy=1 calls=[1-9][0-9]* .*policy_applied=[1-9]' "ktramp patched and policy applied"
 chk 'vmscan_hook .*hooked=1 calls=[1-9][0-9]* scans=[1-9]' "vmscan_hook custom loop ran"
 chk 'poll=[0-9]+ pgscan=[1-9][0-9]*' "real reclaim scanned file LRU"
+chk 'PASS stack moved>0' "young pages rotated to list tail under ktramp policy"
 chk 'vh_off=0' "vmscan_hook restored"
 chk 'kt_off=0' "ktramp restored"
 chk 'vh_rm=0' "vmscan_hook unloaded"

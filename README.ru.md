@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="Vendor Kernel Runtime Entry — библиотека runtime-модулей для замороженных вендорских ядер" width="100%">
+  <img src="assets/banner.svg" alt="Vendor Kernel Runtime Entry — шапка: лестница доказательств от заблокированной цепочки загрузки до версионированной библиотеки модулей" width="100%">
 </p>
 
 <p align="center">
@@ -24,6 +24,37 @@
 
 # Runtime Entry для вендорского ядра Linux
 
+## Почему это не нейрослоп
+
+<p align="center">
+  <img src="assets/advantages.svg" alt="Шесть свойств, подтверждённых гейтами: измерено, а не рассказано; воспроизводимые артефакты; документация под машинной проверкой; графика генерируется; ограниченная область поражения; CI на чистом клоне" width="100%">
+</p>
+
+Текст в этом репозитории может быть написан с помощью ИИ. Числа — нет: каждая
+версия, каждый хеш, каждый счётчик и каждая схема читаются из
+[`versions.json`](versions.json) генератором и перепроверяются на каждом пуше.
+
+- **Ничего не утверждается без лога.** Каждый модуль поставляется с QEMU-гейтом,
+  который произвёл его числа; неизмеренная стадия помечена как *planned* и
+  никогда — как «сделано».
+- **Хеши воспроизводимы.** `vmscan_hook.ko` 1.1.0 собран дважды из одного
+  профиля и дал один sha256 — пин в `versions.json` это и есть та байтовая
+  строка, а не копия скроллбека терминала.
+- **Документация под машинной проверкой.** `tools/check_versions.py` падает на
+  устаревшем хеше, расхождении версий, отсутствующей RU/EN-паре, правленном
+  руками SVG, маркере отложенной работы и устаревшем `module.prop` в пакете.
+- **Графика рендерится.** Все десять SVG выходят из `tools/make_assets.py`;
+  гейт сравнивает перегенерированные байты и не принимает рисунок руками.
+- **Область применения ограничена и описана.** CFI-мост отключает проверки для
+  одного модуля, откат — это перезагрузка, а ftrace/livepatch/kexec перечислены
+  как **закрытые**, а не подделаны.
+- **Чистый клон проходит тот же гейт.** `.github/workflows/static.yml` гоняет
+  статический гейт без `dist/`, без сети и без кэша.
+
+Если какой-то абзац написала вспомогательная модель, этот абзац всё равно прошёл
+через гейт. Запустите `python3 tools/check_versions.py && bash tests/static_checks.sh`
+и проверьте сами.
+
 > ## 🚧 Активная разработка
 >
 > **Это живая библиотека, а не замороженный снимок.** Библиотека модулей,
@@ -41,6 +72,7 @@
 ## Содержание
 
 - [Что это](#что-это)
+- [Почему это не нейрослоп](#почему-это-не-нейрослоп)
 - [Почему это работает](#почему-это-работает)
 - [Архитектура](#архитектура)
 - [Матрица точек входа](#матрица-точек-входа)
@@ -48,6 +80,7 @@
 - [Быстрый старт](#быстрый-старт)
 - [Адаптация под своё устройство](#адаптация-под-своё-устройство)
 - [Evidence](#evidence)
+- [Пайплайн релиза](#пайплайн-релиза)
 - [Дорожная карта](#дорожная-карта)
 - [Версии](#версии)
 - [Документация](#документация)
@@ -135,7 +168,7 @@ CFI-мост — самая интересная часть. `__cfi_check` не�
 ## Библиотека модулей
 
 <p align="center">
-  <img src="assets/library.svg" alt="Библиотека модулей: kbootstrap, kpatch, ktramp, mglru_probe" width="100%">
+  <img src="assets/library.svg" alt="Библиотека модулей: kbootstrap, kpatch, ktramp, mglru_probe, vmscan_hook" width="100%">
 </p>
 
 | модуль | версия | статус | что доказывает | evidence |
@@ -144,12 +177,16 @@ CFI-мост — самая интересная часть. `__cfi_check` не�
 | [`kpatch`](modules/kpatch/) | 1.0.2 | probe | save → `aarch64_insn_patch_text_nosync` → проверка → restore | `getpid 114 → 0 → 118` · `c4f9a319…` |
 | [`ktramp`](modules/ktramp/) | 1.3.0 | экспериментальный | Stage G M5: адаптивный ttl 2..4, ветки возраста 8/9, часы scan-эпох | ветка 8 `a80`, ветка 9 `a10` 51.1%, `y80` 51.0%, `t5` 100%, `tdist=848` · `e688ddc3…` |
 | [`mglru_probe`](modules/mglru/) | 1.0.6 | экспериментальный | kprobe на reclaim path + реальная политика `scan_control.priority` (0x2b), чистый rmmod | `changed=11/11`, `gt0=11`, `pgscan=6071/2464` · `754d20b9…` |
-| [`vmscan_hook`](modules/vmscan_hook/) | 1.0.0 | экспериментальный | кастомный `shrink_lruvec` через патч текста модулем; штатные сканеры списков | `calls=34`, `scans=8209`, `pgscan=8196`, restore/unload · `3fb1610c…` |
+| [`vmscan_hook`](modules/vmscan_hook/) | 1.1.0 | экспериментальный | кастомный `shrink_lruvec` через патч текста модулем; штатные сканеры списков; молодые страницы ротируются, а не теряются | `calls=114`, `scans=20589`, `moved=8323`, `ttl_ms=20000` · `9801942b…` |
 
 Смысл проекта — именно библиотека: каждый модуль собирается из этого дерева
 одним builder'ом, проходит QEMU-гейт и поставляется вместе со своим evidence.
 Новые бэкпорты (vmscan, workingset, folio) добавляются по мере прохождения
 гейтов.
+
+<p align="center">
+  <img src="assets/vmscan-hook.svg" alt="Механизм vmscan_hook: вход через text patch, штатные сканеры списков, ротация молодых страниц, управление через procfs" width="100%">
+</p>
 
 ## Быстрый старт
 
@@ -162,6 +199,11 @@ ksud module install module.zip
 # reboot, затем:
 cat /proc/kbootstrap
 ```
+
+<p align="center">
+  <img src="assets/module-package.svg" alt="Путь установки module.zip на устройстве с KernelSU: install, boot, verify, observe, откат перезагрузкой" width="100%">
+</p>
+
 
 Сборка из исходников:
 
@@ -183,7 +225,7 @@ KB_MODULE_SRC=$PWD/modules/ktramp KB_MODNAME=ktramp \
 ```
 ktramp.ko   entries=5  imports=4  crc_bad=0  not_exported=0
 OK ktramp: this_module=000400 init=0000000000000190 exit=00000000000003c0
-sha256 bbfb599a17db566dae1eb664dbafba5de1f5568bd08ac7363ca1ceefc35b55e3
+sha256 e688ddc30758321a8bc6fb5110529c13af8ee8adc363d70829cef064007fddc2
 ```
 
 ## Адаптация под своё устройство
@@ -214,7 +256,7 @@ tools/adapt_kernel.sh --profile profiles/my-device/profile.env --qemu
 | `kpatch.ko` | `c4f9a319feb6da9d8989bbdb15903bcb6ccce4c361c1fcd1edfc237dfe5ddf11` | `tests/qemu_probe_gate.sh` |
 | `ktramp.ko` | `e688ddc30758321a8bc6fb5110529c13af8ee8adc363d70829cef064007fddc2` | `tests/qemu_ktramp_gate.sh` |
 | `mglru_probe.ko` | `754d20b990bcd022e8766cbe79676eec847dcdfe50e05f99af660dcddf940ea4` | `tests/qemu_mglru_gate.sh` |
-| `vmscan_hook.ko` | `3fb1610cc191b1b5b840aac4140a9c021ac4174d6d5f4eb1f45e5f3c1f7371c9` | `tests/qemu_vmscan_hook_gate.sh` |
+| `vmscan_hook.ko` | `9801942be55f90642b26e802bd9e241170340486f72e1e9e35f58ea441f065cd` | `tests/qemu_vmscan_hook_gate.sh` |
 
 Измерено в QEMU на точном стоковом `Image` (`-smp 1`, `maxcpus=1`):
 
@@ -229,17 +271,33 @@ tools/adapt_kernel.sh --profile profiles/my-device/profile.env --qemu
   (100%), форс старых/молодых вытеснений — ветки 8/9 (51.1%), реальный refault
   — ветка 2 (`tdist=848`); restore и unload чистые.
 - **кастомный vmscan:** `vmscan_hook` заменяет `shrink_lruvec` функцией модуля,
-  которая вызывает штатные `shrink_active_list`/`shrink_inactive_list`;
-  `calls=34`, `scans=8209`, `pgscan_file=8196`, restore + unload чистые.
-- **reclaim-probes:** baseline `get_scan_count=54`, `pgscan_file=1428`; mode 5
-  `get_scan_count=84`, `pgscan_file=4478`, `changed=55/phits=84`
-  (`gt0=55`, `zero=84`). Накопленные суммы несравнимы между прогонами —
+  которая вызывает штатные `shrink_active_list`/`shrink_inactive_list` и
+  ротирует молодые file-страницы в хвост LRU вместо их reclaim:
+  `calls=114`, `scans=20589`, `moved=8323`, `ttl_ms=20000`, `pgscan_file=9357`,
+  restore + unload чистые. Счётчики ротации — то, что 1.1.0 добавляет к 1.0.0.
+- **stack-гейт:** та же нагрузка с загруженной политикой `ktramp`:
+  `ktramp calls=64`, `policy_applied=64`, `vmscan_hook scans=17641`,
+  `moved=5175`, `sum20=420`, `delta20=198`; оба модуля восстановлены и
+  выгружены, поверхности `/proc` исчезли.
+- **reclaim-probes:** baseline `get_scan_count=109`, `pgscan_file=6071`; mode 5
+  `get_scan_count=11`, `pgscan_file=2464`, `changed=11/phits=11`
+  (`gt0=11`, `zero=11`). Накопленные суммы несравнимы между прогонами —
   fixed-endpoint метрика `delta/pre` в `ktramp` 1.1.0; см.
   [`docs/MGLRU-STAGE-E.ru.md`](docs/MGLRU-STAGE-E.ru.md).
 - **payload:** `/proc/kbootstrap` отдаёт `payload_result=42`.
 
 Как именно создаётся reclaim-нагрузка (и почему `tmpfs` не работает) —
 [`docs/MEASURING-RECLAIM.md`](docs/MEASURING-RECLAIM.md).
+
+## Пайплайн релиза
+
+<p align="center">
+  <img src="assets/pipeline.svg" alt="Пайплайн релиза: исходники, сборка, QEMU-гейт, versions.json, документация и ассеты, гейт версий, релиз" width="100%">
+</p>
+
+Релиз — это всегда одни и те же семь шагов, и гейт, который его проверяет, — тот
+же скрипт, что выполняется в CI. Чеклист под схемой: [`docs/RELEASE.md`](docs/RELEASE.md).
+
 
 ## Дорожная карта
 
@@ -273,6 +331,7 @@ QEMU и явным списком пробелов; дельта 5.10 → 7.4 и
 | [v1.2.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.2.0) | MGLRU Stage F (M4 subset): per-memcg часы scan-эпох `seq`/`win`, порог refault по окну, 31/31 unit-тестов |
 | [v1.3.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.3.0) | MGLRU Stage G (M5): адаптивный ttl, ветки возраста 8/9, `vmscan_hook` кастомный `shrink_lruvec`, parity-report, 38/38 unit-тестов |
 | [v1.4.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.4.0) | stack-гейт: политика `ktramp` + кастомный `shrink_lruvec` `vmscan_hook` компонуются под реальным reclaim (`calls=112`, `scans=8579`, `pgscan=8210`), restore/unload чистые |
+| [v1.5.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.5.0) | `vmscan_hook` 1.1.0: ротация молодых страниц (`moved`, `ttl_ms`), воспроизводимый `.ko`, переработанная шапка, пять новых инфографик, гейт расширен на `module.prop` в `dist/` |
 
 ## Документация
 
@@ -282,6 +341,7 @@ QEMU и явным списком пробелов; дельта 5.10 → 7.4 и
 | Матрица входа | [ENTRYPOINTS.ru](docs/ENTRYPOINTS.ru.md) | [ENTRYPOINTS](docs/ENTRYPOINTS.md) | каждый механизм с evidence и границами |
 | Измерение reclaim | — | [MEASURING-RECLAIM](docs/MEASURING-RECLAIM.md) | как заставить QEMU реально сканировать file LRU |
 | MGLRU probe | [MGLRU.ru](docs/MGLRU.ru.md) | [MGLRU](docs/MGLRU.md) | статус Stage A/B, что **не** является parity |
+| vmscan hook | [VMSSCAN-HOOK.ru](docs/VMSSCAN-HOOK.ru.md) | [VMSSCAN-HOOK](docs/VMSSCAN-HOOK.md) | кастомный `shrink_lruvec`, политика ротации, счётчики |
 | CVE-патчи | [CVE-PATCHING.ru](docs/CVE-PATCHING.ru.md) | [CVE-PATCHING](docs/CVE-PATCHING.md) | шаблон defensive runtime-митигации |
 | Методология | — | [METHODOLOGY](docs/METHODOLOGY.md) | как анализируется цель и что гейтится |
 | Безопасность | — | [SECURITY](docs/SECURITY.md) | модель угроз, граница доверия, режимы отказа |
@@ -311,7 +371,7 @@ panic, повредить память или окирпичить устрой�
 ## Структура репозитория
 
 ```
-assets/      сгенерированная SVG-инфографика (баннер, архитектура, матрица, roadmap, evidence)
+assets/      десять сгенерированных SVG (шапка, advantages, pipeline, package, hook, архитектура, матрица, roadmap, evidence, library)
 kernel/      исходник базового модуля + CFI-мост
 modules/     kpatch (text patch), ktramp (трамплин), mglru (probe Stage A/B)
 module/      пакет KernelSU / ReSukiSU
@@ -322,8 +382,9 @@ docs/        адаптация, матрица входа, reclaim, MGLRU, CVE,
 ```
 
 Инфографика генерируется, а не рисуется руками: `python3 tools/make_assets.py`
-детерминированно пересобирает все шесть SVG и валидирует XML и геометрию.
-Меняйте генератор, а не ассет.
+детерминированно пересобирает все десять SVG, валидирует XML и геометрию, а
+статический гейт перерендеривает их, чтобы поймать правку руками. Меняйте
+генератор, а не ассет.
 
 ## Участие
 

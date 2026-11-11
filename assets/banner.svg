@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-labelledby="t d">
 <title id="t">Vendor Kernel Runtime Entry</title>
-<desc id="d">Hero banner: runtime module library for vendor-frozen kernels.</desc>
+<desc id="d">Hero banner: load trusted modules into a vendor-frozen kernel, with the proof ladder from a locked boot chain to the versioned module library.</desc>
 <defs>
   <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
     <stop offset="0" stop-color="#070b16"/><stop offset="55%" stop-color="#0b1224"/>
@@ -31,48 +31,65 @@
 <circle cx="153" cy="0" r="409" fill="url(#glowc)"/>
 <circle cx="1177" cy="400" r="358" fill="url(#glowv)"/>
 <rect x="0" y="0" width="1280" height="3" fill="url(#accent)" opacity="0.9"/>
-<text x="72" y="74" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12" fill="#22d3ee" font-weight="700" letter-spacing="3">H2 RUNTIME  ·  ANDROID 16  ·  ARM64</text>
-<circle cx="1094" cy="70" r="4.5" fill="#34d399"/>
-<text x="1106" y="75" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12" fill="#34d399" font-weight="600">active development</text>
-<text x="72" y="150" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="62" fill="#e8eefb" font-weight="800" letter-spacing="-1">VENDOR KERNEL</text>
-<text x="72" y="216" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="62" font-weight="800" letter-spacing="-1" fill="url(#accent)">RUNTIME ENTRY</text>
-<text x="72" y="262" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="17" fill="#8fa3bf" font-weight="400">Load trusted modules into a vendor-frozen kernel — no kernel</text>
-<text x="72" y="288" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="17" fill="#8fa3bf" font-weight="400">recompile, no unlocked bootloader, no livepatch.</text>
-<rect x="72" y="316" width="96" height="24" rx="12.0" fill="#22d3ee" fill-opacity="0.12" stroke="#22d3ee" stroke-opacity="0.45"/>
-<text x="84" y="332.32" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="12" fill="#22d3ee" font-weight="600">CFI bridge</text>
-<rect x="178.0" y="316" width="96" height="24" rx="12.0" fill="#a78bfa" fill-opacity="0.12" stroke="#a78bfa" stroke-opacity="0.45"/>
-<text x="190.0" y="332.32" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="12" fill="#a78bfa" font-weight="600">text patch</text>
-<rect x="284.0" y="316" width="96" height="24" rx="12.0" fill="#60a5fa" fill-opacity="0.12" stroke="#60a5fa" stroke-opacity="0.45"/>
-<text x="296.0" y="332.32" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="12" fill="#60a5fa" font-weight="600">trampoline</text>
-<rect x="390.0" y="316" width="103" height="24" rx="12.0" fill="#fbbf24" fill-opacity="0.12" stroke="#fbbf24" stroke-opacity="0.45"/>
-<text x="402.0" y="332.32" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="12" fill="#fbbf24" font-weight="600">MGLRU probe</text>
-<rect x="503.2" y="316" width="67" height="24" rx="12.0" fill="#34d399" fill-opacity="0.12" stroke="#34d399" stroke-opacity="0.45"/>
-<text x="515.2" y="332.32" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="12" fill="#34d399" font-weight="600">procfs</text>
-<rect x="72" y="352" width="92" height="26" rx="13" fill="none" stroke="#a78bfa" stroke-width="1.2"/>
-<text x="118" y="370" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="12" fill="#a78bfa" font-weight="700" text-anchor="middle">v1.4.0</text>
-<rect x="880" y="62" width="330" height="52" rx="12" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
-<rect x="880" y="62" width="4" height="52" rx="2" fill="#34d399" opacity="0.9"/>
-<text x="900" y="85" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="15" fill="#e8eefb" font-weight="700">kbootstrap</text>
-<text x="900" y="103" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#8fa3bf" font-weight="400">CFI bridge + payload bus</text>
-<text x="1182" y="85" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="10.5" fill="#34d399" font-weight="600" text-anchor="end">v1.0.0</text>
-<rect x="886" y="124" width="324" height="52" rx="12" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
-<rect x="886" y="124" width="4" height="52" rx="2" fill="#34d399" opacity="0.9"/>
-<text x="906" y="147" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="15" fill="#e8eefb" font-weight="700">kpatch</text>
-<text x="906" y="165" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#8fa3bf" font-weight="400">live text patch / restore</text>
-<text x="1182" y="147" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="10.5" fill="#34d399" font-weight="600" text-anchor="end">v1.0.2</text>
-<rect x="892" y="186" width="318" height="52" rx="12" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
-<rect x="892" y="186" width="4" height="52" rx="2" fill="#fbbf24" opacity="0.9"/>
-<text x="912" y="209" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="15" fill="#e8eefb" font-weight="700">ktramp</text>
-<text x="912" y="227" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#8fa3bf" font-weight="400">full-function trampoline</text>
-<text x="1182" y="209" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="10.5" fill="#fbbf24" font-weight="600" text-anchor="end">v1.3.0</text>
-<rect x="898" y="248" width="312" height="52" rx="12" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
-<rect x="898" y="248" width="4" height="52" rx="2" fill="#fbbf24" opacity="0.9"/>
-<text x="918" y="271" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="15" fill="#e8eefb" font-weight="700">mglru_probe</text>
-<text x="918" y="289" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#8fa3bf" font-weight="400">reclaim Stage A/B</text>
-<text x="1182" y="271" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="10.5" fill="#fbbf24" font-weight="600" text-anchor="end">v1.0.6</text>
-<rect x="904" y="310" width="306" height="52" rx="12" fill="url(#cardg)" stroke="#1b2740" stroke-width="1" stroke-dasharray="5 5"/>
-<rect x="904" y="310" width="4" height="52" rx="2" fill="#64748b" opacity="0.9"/>
-<text x="924" y="333" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="15" fill="#e8eefb" font-weight="700">7.4 backports</text>
-<text x="924" y="351" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" fill="#8fa3bf" font-weight="400">planned library growth</text>
-<text x="1182" y="333" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="10.5" fill="#64748b" font-weight="600" text-anchor="end">roadmap</text>
+<text x="64" y="72" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12" fill="#22d3ee" font-weight="700" letter-spacing="3">RUNTIME MODULE LIBRARY  ·  ANDROID 16  ·  ARM64</text>
+<circle cx="528" cy="67" r="4.5" fill="#34d399"/>
+<text x="540.28" y="72" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12" fill="#34d399" font-weight="600">active development</text>
+<text x="64" y="146" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="60" fill="#e8eefb" font-weight="800" letter-spacing="-1">VENDOR KERNEL</text>
+<text x="64" y="210" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="60" font-weight="800" letter-spacing="-1" fill="url(#accent)">RUNTIME ENTRY</text>
+<text x="64" y="254" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="16.5" fill="#8fa3bf" font-weight="400">Load trusted modules into a vendor-frozen kernel —</text>
+<text x="64" y="278" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="16.5" fill="#8fa3bf" font-weight="400">no kernel recompile, no unlocked bootloader, no livepatch.</text>
+<rect x="64" y="298" width="93" height="24" rx="12.0" fill="#22d3ee" fill-opacity="0.12" stroke="#22d3ee" stroke-opacity="0.45"/>
+<text x="76" y="314.14" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11.5" fill="#22d3ee" font-weight="600">CFI bridge</text>
+<rect x="166.0" y="298" width="65" height="24" rx="12.0" fill="#60a5fa" fill-opacity="0.12" stroke="#60a5fa" stroke-opacity="0.45"/>
+<text x="178.0" y="314.14" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11.5" fill="#60a5fa" font-weight="600">kprobe</text>
+<rect x="240.4" y="298" width="93" height="24" rx="12.0" fill="#a78bfa" fill-opacity="0.12" stroke="#a78bfa" stroke-opacity="0.45"/>
+<text x="252.4" y="314.14" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11.5" fill="#a78bfa" font-weight="600">text patch</text>
+<rect x="342.4" y="298" width="93" height="24" rx="12.0" fill="#fbbf24" fill-opacity="0.12" stroke="#fbbf24" stroke-opacity="0.45"/>
+<text x="354.4" y="314.14" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11.5" fill="#fbbf24" font-weight="600">trampoline</text>
+<rect x="444.4" y="298" width="65" height="24" rx="12.0" fill="#34d399" fill-opacity="0.12" stroke="#34d399" stroke-opacity="0.45"/>
+<text x="456.4" y="314.14" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11.5" fill="#34d399" font-weight="600">procfs</text>
+<rect x="64" y="338" width="67" height="26" rx="13.0" fill="#a78bfa" fill-opacity="0.12" stroke="#a78bfa" stroke-opacity="0.45"/>
+<text x="76" y="355.32" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="12" fill="#a78bfa" font-weight="600">v1.5.0</text>
+<rect x="141.2" y="338" width="89" height="26" rx="13.0" fill="#34d399" fill-opacity="0.12" stroke="#34d399" stroke-opacity="0.45"/>
+<text x="153.2" y="355.32" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="12" fill="#34d399" font-weight="600">5 modules</text>
+<text x="252.0" y="356" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#64748b" font-weight="400">each shipped module has its own QEMU gate</text>
+<rect x="720" y="56" width="496" height="292" rx="18" fill="#0b1424" stroke="#1e2b45" stroke-width="1"/>
+<text x="744" y="86" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" fill="#64748b" font-weight="700" letter-spacing="2">PROOF LADDER</text>
+<text x="1192" y="86" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" fill="#64748b" font-weight="400" text-anchor="end">state on the reference Image</text>
+<rect x="736" y="102" width="464" height="42" rx="10" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
+<rect x="736" y="102" width="3.5" height="42" rx="1.75" fill="#8fa3bf" opacity="0.9"/>
+<text x="754" y="129" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="16" fill="#8fa3bf" font-weight="800">0</text>
+<text x="778" y="121" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" fill="#e8eefb" font-weight="700">vendor Image 5.10.236</text>
+<text x="778" y="136" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" fill="#8fa3bf" font-weight="400">bootloader locked · no kernel flash · MODULES=y</text>
+<rect x="1147.5" y="113" width="44" height="19" rx="9.5" fill="#8fa3bf" fill-opacity="0.12" stroke="#8fa3bf" stroke-opacity="0.45"/>
+<text x="1155.5" y="125.92" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="9.5" fill="#8fa3bf" font-weight="600">given</text>
+<rect x="736" y="150" width="464" height="42" rx="10" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
+<rect x="736" y="150" width="3.5" height="42" rx="1.75" fill="#22d3ee" opacity="0.9"/>
+<text x="754" y="177" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="16" fill="#22d3ee" font-weight="800">1</text>
+<text x="778" y="169" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" fill="#e8eefb" font-weight="700">loader compatibility</text>
+<text x="778" y="184" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" fill="#8fa3bf" font-weight="400">vermagic · __versions CRC · struct module 0x190/0x3c0</text>
+<rect x="1141.8" y="161" width="50" height="19" rx="9.5" fill="#22d3ee" fill-opacity="0.12" stroke="#22d3ee" stroke-opacity="0.45"/>
+<text x="1149.8" y="173.92" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="9.5" fill="#22d3ee" font-weight="600">proven</text>
+<rect x="736" y="198" width="464" height="42" rx="10" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
+<rect x="736" y="198" width="3.5" height="42" rx="1.75" fill="#a78bfa" opacity="0.9"/>
+<text x="754" y="225" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="16" fill="#a78bfa" font-weight="800">2</text>
+<text x="778" y="217" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" fill="#e8eefb" font-weight="700">CFI bridge</text>
+<text x="778" y="232" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" fill="#8fa3bf" font-weight="400">module-local __cfi_check, no kernel-wide CFI change</text>
+<rect x="1141.8" y="209" width="50" height="19" rx="9.5" fill="#a78bfa" fill-opacity="0.12" stroke="#a78bfa" stroke-opacity="0.45"/>
+<text x="1149.8" y="221.92" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="9.5" fill="#a78bfa" font-weight="600">proven</text>
+<rect x="736" y="246" width="464" height="42" rx="10" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
+<rect x="736" y="246" width="3.5" height="42" rx="1.75" fill="#60a5fa" opacity="0.9"/>
+<text x="754" y="273" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="16" fill="#60a5fa" font-weight="800">3</text>
+<text x="778" y="265" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" fill="#e8eefb" font-weight="700">runtime entry</text>
+<text x="778" y="280" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" fill="#8fa3bf" font-weight="400">kprobe · text patch · trampoline · raw payload · procfs</text>
+<rect x="1141.8" y="257" width="50" height="19" rx="9.5" fill="#60a5fa" fill-opacity="0.12" stroke="#60a5fa" stroke-opacity="0.45"/>
+<text x="1149.8" y="269.92" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="9.5" fill="#60a5fa" font-weight="600">proven</text>
+<rect x="736" y="294" width="464" height="42" rx="10" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
+<rect x="736" y="294" width="3.5" height="42" rx="1.75" fill="#34d399" opacity="0.9"/>
+<text x="754" y="321" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="16" fill="#34d399" font-weight="800">4</text>
+<text x="778" y="313" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" fill="#e8eefb" font-weight="700">module library</text>
+<text x="778" y="328" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" fill="#8fa3bf" font-weight="400">5 versioned modules, one per gate</text>
+<rect x="1136.1" y="305" width="56" height="19" rx="9.5" fill="#34d399" fill-opacity="0.12" stroke="#34d399" stroke-opacity="0.45"/>
+<text x="1144.1" y="317.92" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="9.5" fill="#34d399" font-weight="600">growing</text>
+<text x="64" y="384" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="10.5" fill="#64748b" font-weight="400">Every number in these documents is produced by a gate you can re-run: tests/qemu_*.sh → serial log → versions.json.</text>
 </svg>

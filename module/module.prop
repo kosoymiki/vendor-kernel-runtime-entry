@@ -1,6 +1,6 @@
 id=h2-runtime-entry
 name=H2 Runtime Entry
-version=1.4.0
-versionCode=9
+version=1.5.0
+versionCode=10
 author=kosoymiki
 description=Runtime entry and growing module library for vendor-frozen Linux kernels (reference profile RMX3709 5.10.236). Build per target; not a universal binary.

@@ -15,6 +15,9 @@
 #include <linux/mm.h>
 #include <linux/mmzone.h>
 #include <linux/stddef.h>
+#include <linux/jiffies.h>
+#include <linux/spinlock.h>
+#include <linux/list.h>
 
 #define SC_NR_TO_RECLAIM 0x00UL
 #define SC_BITS          0x28UL
@@ -43,7 +46,7 @@ typedef int (*patch_fn)(void **, u32 *, int);
 static unsigned long target;		/* shrink_lruvec */
 static u32 orig0;
 static int hooked;
-static unsigned long calls, scans, reclaimed_pages;
+static unsigned long calls, scans, reclaimed_pages, moved, ttl_ms = 50;
 static patch_fn do_patch;
 static struct proc_dir_entry *vpde;
 static char vbuf[512];
@@ -53,6 +56,77 @@ static get_scan_fn g_get_scan;
 static shrink_inactive_fn g_shrink_inactive;
 static shrink_active_fn g_shrink_active;
 static cond_resched_fn g_cond_resched;
+static unsigned long *jiffies_p;
+
+#define GENN 8192
+static unsigned long gpage[GENN], gtime[GENN];
+static struct kprobe akp = { .symbol_name = "mark_page_accessed" };
+static int ak_reg;
+
+static void g_store(unsigned long page, unsigned long t)
+{
+	unsigned long i = (page >> 12) & (GENN - 1);
+
+	gpage[i] = page;
+	gtime[i] = t;
+}
+
+static unsigned long g_load(unsigned long page)
+{
+	unsigned long i = (page >> 12) & (GENN - 1);
+
+	return gpage[i] == page ? gtime[i] : 0;
+}
+
+static int a_handler(struct kprobe *p, struct pt_regs *r)
+{
+	unsigned long page = r->regs[0];
+
+	(void)p;
+	if (page && jiffies_p)
+		g_store(page, *jiffies_p);
+	return 0;
+}
+
+/* MGLRU-style list walk: move pages accessed within ttl_ms to the tail of
+ * their inactive list, so the kernel scanner (which takes from the head)
+ * evicts old generations first. Runs under pgdat->lru_lock. */
+static void rotate_young(struct lruvec *lv)
+{
+	struct pglist_data *pgdat = lv->pgdat;
+	LIST_HEAD(ya);
+	LIST_HEAD(yf);
+	struct page *page, *tmp;
+	unsigned long flags, now, ttl;
+
+	if (!pgdat || !jiffies_p || !ttl_ms)
+		return;
+	now = *jiffies_p;
+	ttl = ttl_ms * HZ / 1000;
+	if (!ttl)
+		ttl = 1;
+	spin_lock_irqsave(&pgdat->lru_lock, flags);
+	list_for_each_entry_safe(page, tmp, &lv->lists[LRU_INACTIVE_ANON], lru) {
+		unsigned long t = g_load((unsigned long)page);
+
+		if (t && now - t < ttl) {
+			list_move(&page->lru, &ya);
+			moved++;
+		}
+	}
+	list_for_each_entry_safe(page, tmp, &lv->lists[LRU_INACTIVE_FILE], lru) {
+		unsigned long t = g_load((unsigned long)page);
+
+		if (t && now - t < ttl) {
+			list_move(&page->lru, &yf);
+			moved++;
+		}
+	}
+	list_splice_tail(&ya, &lv->lists[LRU_INACTIVE_ANON]);
+	list_splice_tail(&yf, &lv->lists[LRU_INACTIVE_FILE]);
+	spin_unlock_irqrestore(&pgdat->lru_lock, flags);
+}
+
 
 static void putc_(char c) { if (vp < vend) *vp++ = c; *vp = 0; }
 static void put_(const char *s) { while (*s) putc_(*s++); }
@@ -75,6 +149,7 @@ static noinline void my_shrink_lruvec(void *lruvec, void *sc)
 	int lru, guard = 0;
 
 	calls++;
+	rotate_young((struct lruvec *)lruvec);
 	g_get_scan(lruvec, sc, nr);
 	while ((nr[0] || nr[2] || nr[3]) && guard++ < 4096) {
 		for (lru = 0; lru <= 3; lru++) {
@@ -153,7 +228,7 @@ static ssize_t v_read(struct file *f, char __user *buf, size_t len, loff_t *off)
 	put_(" hooked="); putdec_(hooked);
 	put_(" calls="); putdec_((long)calls);
 	put_(" scans="); putdec_((long)scans);
-	put_(" reclaimed="); putdec_((long)reclaimed_pages);
+	put_(" reclaimed="); putdec_((long)reclaimed_pages); put_(" moved="); putdec_((long)moved); put_(" ttl_ms="); putdec_((long)ttl_ms);
 	put_("\n");
 	return simple_read_from_buffer(buf, len, off, vbuf, (size_t)(vp - vbuf));
 }
@@ -169,10 +244,16 @@ static ssize_t v_write(struct file *f, const char __user *ubuf, size_t len, loff
 	if (n < 0)
 		return n;
 	tmp[n] = 0;
-	if (tmp[0] == '1')
+	if (tmp[0] == 't') {
+		char *q = tmp + 1;
+		unsigned long v = 0;
+		while (*q >= '0' && *q <= '9') v = v * 10 + (*q++ - '0');
+		ttl_ms = v;
+	} else if (tmp[0] == '1') {
 		rc = patch_on();
-	else
+	} else {
 		rc = patch_off();
+	}
 	return rc ? rc : n;
 }
 
@@ -205,12 +286,18 @@ static int __init vh_init(void)
 	g_shrink_active = (shrink_active_fn)kln("shrink_active_list");
 	g_cond_resched = (cond_resched_fn)kln("cond_resched");
 	do_patch = (patch_fn)kln("aarch64_insn_patch_text");
+	jiffies_p = (unsigned long *)kln("jiffies");
 	if (!target || !g_get_scan || !g_shrink_inactive || !g_shrink_active || !do_patch) {
 		pr_err("vmscan_hook: missing symbols target=%px gs=%px si=%px sa=%px p=%px\n",
 		       (void *)target, (void *)g_get_scan, (void *)g_shrink_inactive,
 		       (void *)g_shrink_active, (void *)do_patch);
 		return -ENOENT;
 	}
+	akp.pre_handler = a_handler;
+	if (register_kprobe(&akp) == 0)
+		ak_reg = 1;
+	else
+		pr_warn("vmscan_hook: mark_page_accessed kprobe failed\n");
 	vpde = proc_create("vmscan_hook", 0644, NULL, &v_pops);
 	pr_info("vmscan_hook: ready target=%px\n", (void *)target);
 	return 0;
@@ -219,6 +306,8 @@ static int __init vh_init(void)
 static void __exit vh_exit(void)
 {
 	patch_off();
+	if (ak_reg)
+		unregister_kprobe(&akp);
 	if (vpde)
 		proc_remove(vpde);
 	pr_info("vmscan_hook: exit\n");

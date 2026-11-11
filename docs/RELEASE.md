@@ -1,17 +1,19 @@
 # Release procedure (and why it is mechanical)
 
-A version bump in this repository is not one edit. The release number and every
-module hash appear in:
+A version bump in this repository is not one edit. The release number, every
+module hash and every measured counter appear in:
 
 - `module/module.prop` (package metadata),
 - `README.md` and `README.ru.md` (version history table, module table, evidence
   table),
 - `docs/ENTRYPOINTS.md` / `.ru.md` (mechanism evidence),
 - `docs/MGLRU.md` / `.ru.md` (probe counters),
+- `docs/VMSSCAN-HOOK.md` / `.ru.md` (hook mechanism and counters),
 - each `modules/<name>/README.md` (artifact hash and measured numbers),
-- **six generated SVGs** — the banner carries the release chip, the library
-  cards carry per-module versions, the evidence card carries the measured
-  counters.
+- **ten generated SVGs** — the banner carries the release chip, the advantages
+  and pipeline panels restate the guarantees, the library cards carry
+  per-module versions, the package and hook panels restate the install and
+  reclaim paths, and the evidence card carries the measured counters.
 
 Missing one of those produces documentation that lies about a binary. That has
 already happened here: the banner chip said `v1.0.3` while `module.prop` still
@@ -26,53 +28,74 @@ block. `tools/make_assets.py` reads it; `tools/check_versions.py` enforces it.
 
 ```json
 {
-  "release": { "version": "1.0.3", "versionCode": 4, "date": "2026-11-10" },
+  "release": { "version": "1.5.0", "versionCode": 10, "date": "2026-11-11" },
   "modules": [
-    { "name": "ktramp", "version": "1.0.3", "status": "probe",
-      "sha256": "bbfb599a…", "gate": "tests/qemu_ktramp_gate.sh",
-      "dir": "modules/ktramp" }
+    { "name": "vmscan_hook", "version": "1.1.0", "status": "experimental",
+      "sha256": "9801942be55f90642b26e802bd9e241170340486f72e1e9e35f58ea441f065cd",
+      "gate": "tests/qemu_vmscan_hook_gate.sh",
+      "dir": "modules/vmscan_hook" }
   ],
-  "evidence": { "ktramp": { "calls": 113, "pgscan_file": 6084 } }
+  "evidence": { "vmscan_hook": { "calls": 114, "scans": 20589, "moved": 8323 } }
 }
 ```
+
+Counters in `evidence` are copied from the gate log of the artifact whose
+`sha256` sits in the same file. Rebuild without a fresh log means the counters
+are not evidence and must not be pasted.
 
 ## Checklist
 
 Run it top to bottom; nothing here is optional.
 
 1. **Build and gate the module.** A bump without a fresh QEMU log is not a
-   release.
+   release. Build twice when the artifact is pinned by hash; both builds must
+   produce the same byte string.
 2. **`versions.json`** — release version/versionCode/date, module `version`,
-   `sha256`, `status`, and the `evidence` counters.
+   `sha256`, `status`, and the `evidence` counters from the fresh log.
 3. **`module/module.prop`** — same `version` and `versionCode`.
 4. **`README.md` and `README.ru.md`** — add the version row to *Versions*, update
    the module table, the evidence table, and the roadmap if a stage moved.
    Both languages, in the same commit.
 5. **`docs/ENTRYPOINTS.md` / `.ru.md`** — new mechanism row or new evidence.
 6. **`docs/MGLRU.md` / `.ru.md`** — counters and stage status, if they moved.
-7. **`modules/<name>/README.md`** — hash, counters, limits.
-8. **Regenerate the graphics:** `python3 tools/make_assets.py`. Never edit an
-   SVG by hand.
-9. **Gate:** `python3 tools/check_versions.py && bash tests/static_checks.sh`.
-10. **Rebuild `module.zip`** and copy the new `module.prop` into
-    `dist/out-kbootstrap/module/` before zipping.
-11. **Commit, tag, release** (`gh release create …`), then verify **CI success
+7. **`docs/VMSSCAN-HOOK.md` / `.ru.md`** — hook counters, `moved`/`ttl_ms`, and
+   the stack-gate numbers.
+8. **`modules/<name>/README.md`** — hash, counters, limits.
+9. **Regenerate the graphics:** `python3 tools/make_assets.py`. Never edit an
+   SVG by hand; the gate re-renders all ten from `versions.json` and compares
+   the bytes.
+10. **Gate:** `python3 tools/check_versions.py && bash tests/static_checks.sh`.
+11. **Rebuild `module.zip`** and copy the new `module.prop` into
+    `dist/out-kbootstrap/module/` before zipping. Stale `dist/out-*` trees are
+    moved to `dist/attic-<date>/` first — the gate checks every packaged
+    `module.prop` under `dist/` and fails on a stale one.
+12. **Write `SHA256SUMS`** over the release artifacts in `dist/release-v<ver>/`.
+13. **Commit, tag, release** (`gh release create …`), then verify **CI success
     and a fresh clone passing the static gate**.
 
 ## What the gate actually checks
 
 `tools/check_versions.py` fails when:
 
-- `module.prop` disagrees with `versions.json` (version or versionCode);
-- a module `sha256` is missing from either root README;
-- the current release version is not mentioned in either root README;
-- a module has no directory, `README.md` or `Makefile`;
-- a `docs/*.ru.md` has no English counterpart, or a paired document is missing;
-- regenerating the six SVGs from `versions.json` does not reproduce the files
-  byte-for-byte (i.e. someone hand-edited a graphic).
+1. `module.prop` disagrees with `versions.json` (version or versionCode);
+2. a module `sha256` is missing from either root README;
+3. the current release version is not mentioned in either root README;
+4. a module has no directory, `README.md` or `Makefile`;
+5. a `docs/*.ru.md` has no English counterpart, or a paired document is missing;
+6. regenerating the ten SVGs from `versions.json` does not reproduce the files
+   byte-for-byte (i.e. someone hand-edited a graphic);
+7. a stale artifact hash appears in a current-state document — every 64-hex
+   string and every shortened hash followed by `…` must belong to a module in
+   `versions.json`. Timestamped stage records (`docs/BACKPORT-7.4.*`,
+   `docs/MGLRU-STAGE-*`) are excluded by name on purpose: they record what was
+   measured on that date, and rewriting them would falsify the record;
+8. either root README's module table row does not show the current version;
+9. a module README does not carry its current artifact hash;
+10. a copied `module.prop` under `dist/out-*/module/` disagrees with the release
+    block (that copy is what ends up inside `module.zip`).
 
 `tests/static_checks.sh` additionally fails when any README loses its
-active-development notice, and runs the asset check itself.
+active-development notice, and runs the asset consistency check itself.
 
 ## Reflection: why a human checklist is not enough
 
@@ -83,6 +106,12 @@ active-development notice, and runs the asset check itself.
 - **Graphics are data.** The banner, library cards and evidence card are
   *rendered facts*, not decoration. Treating them as art is exactly how they end
   up contradicting the tables below them.
+- **Counters are evidence only next to their artifact.** A number from an older
+  `.ko` pasted under a newer hash is the same lie as a stale hash, so the
+  numbers move together with the pin, never separately.
+- **The package is part of the surface.** `dist/out-*/module/module.prop` is the
+  file users install; leaving an old one there ships the previous release under
+  the new tag.
 - **CI must be able to fail.** A check that only exists in a document is a
   suggestion. `check_versions.py` runs in `static_checks.sh`, which runs in CI on
   every push and pull request.

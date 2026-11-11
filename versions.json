@@ -1,8 +1,8 @@
 {
   "_comment": "Single source of truth for release and module metadata. tools/make_assets.py renders it into the SVGs; tools/check_versions.py enforces that nothing drifts. Bump here first, then run the checklist in docs/RELEASE.md.",
   "release": {
-    "version": "1.4.0",
-    "versionCode": 9,
+    "version": "1.5.0",
+    "versionCode": 10,
     "date": "2026-11-11"
   },
   "modules": [
@@ -44,11 +44,11 @@
     },
     {
       "name": "vmscan_hook",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "status": "experimental",
-      "sha256": "3fb1610cc191b1b5b840aac4140a9c021ac4174d6d5f4eb1f45e5f3c1f7371c9",
+      "sha256": "9801942be55f90642b26e802bd9e241170340486f72e1e9e35f58ea441f065cd",
       "gate": "tests/qemu_vmscan_hook_gate.sh",
-      "note": "custom shrink_lruvec via module text patch, kernel list scanners",
+      "note": "custom shrink_lruvec via module text patch, kernel list scanners, young-page rotation (moved/ttl_ms)",
       "dir": "modules/vmscan_hook"
     }
   ],
@@ -114,9 +114,11 @@
       "log": "$PREFIX/tmp/mglru-gate.*/serial.log"
     },
     "vmscan_hook": {
-      "calls": 34,
-      "scans": 8209,
-      "pgscan_file": 8196,
+      "calls": 114,
+      "scans": 20589,
+      "moved": 8323,
+      "ttl_ms": 20000,
+      "pgscan_file": 9357,
       "restore": {
         "hooked": "1->0",
         "rmmod_rc": 0,
@@ -126,15 +128,18 @@
       "log": "$PREFIX/tmp/vmscan-hook.*/serial.log"
     },
     "vmscan_stack": {
-      "ktramp_calls": 112,
-      "policy_applied": 112,
-      "sum20": 302,
-      "delta20": 2,
-      "seq": 112,
+      "ktramp_calls": 64,
+      "policy_applied": 64,
+      "sum20": 420,
+      "pol20": 20,
+      "pre20": 618,
+      "delta20": 198,
+      "seq": 64,
       "ttl": 2,
-      "vmscan_calls": 112,
-      "scans": 8579,
-      "pgscan_file": 8210,
+      "vmscan_calls": 64,
+      "scans": 17641,
+      "moved": 5175,
+      "pgscan_file": 8205,
       "gate": "tests/qemu_vmscan_stack_gate.sh",
       "log": "$PREFIX/tmp/vmscan-stack.*/serial.log"
     }

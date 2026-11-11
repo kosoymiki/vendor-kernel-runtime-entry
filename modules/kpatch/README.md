@@ -13,6 +13,10 @@ Proof that the entry can replace a live kernel function and restore it:
 - verify `getpid()` returns 0;
 - restore original instructions via write `0`.
 
+Artifact: `kpatch.ko` 1.0.2, sha256
+`c4f9a319feb6da9d8989bbdb15903bcb6ccce4c361c1fcd1edfc237dfe5ddf11`, gated by
+`tests/qemu_probe_gate.sh`.
+
 **Reference evidence (QEMU, exact Image):** before `getpid=114`, patched `0`,
 restored `118` (`$PREFIX/tmp/kpatch2-1794330412/q.log`). This is a probe, not a
 stable patch framework.

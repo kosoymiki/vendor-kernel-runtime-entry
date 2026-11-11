@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="620" viewBox="0 0 1280 620" role="img" aria-labelledby="t d">
+<title id="t">Why this repository is not a generated dump</title>
+<desc id="d">Six properties that separate a measured kernel project from AI-generated slop: QEMU gates, reproducible hashes, machine-checked docs, generated graphics, bounded blast radius and fresh-clone CI.</desc>
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#070b16"/><stop offset="55%" stop-color="#0b1224"/>
+    <stop offset="100%" stop-color="#070b16"/>
+  </linearGradient>
+  <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#22d3ee"/><stop offset="100%" stop-color="#a78bfa"/>
+  </linearGradient>
+  <linearGradient id="cardg" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#121f38" stop-opacity="0.95"/>
+    <stop offset="100%" stop-color="#0f1a2e" stop-opacity="0.95"/>
+  </linearGradient>
+  <radialGradient id="glowc"><stop offset="0" stop-color="#22d3ee" stop-opacity="0.28"/>
+    <stop offset="100%" stop-color="#22d3ee" stop-opacity="0"/></radialGradient>
+  <radialGradient id="glowv"><stop offset="0" stop-color="#a78bfa" stop-opacity="0.26"/>
+    <stop offset="100%" stop-color="#a78bfa" stop-opacity="0"/></radialGradient>
+  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+    <path d="M40 0H0V40" fill="none" stroke="#1b2740" stroke-width="1" stroke-opacity="0.5"/>
+  </pattern>
+  <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7"
+          orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#8fa3bf"/></marker>
+  <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+    <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000" flood-opacity="0.35"/>
+  </filter>
+</defs>
+<rect width="1280" height="620" fill="url(#bg)"/>
+<rect width="1280" height="620" fill="url(#grid)" opacity="0.35"/>
+<circle cx="153" cy="0" r="409" fill="url(#glowc)"/>
+<circle cx="1177" cy="620" r="358" fill="url(#glowv)"/>
+<text x="64" y="64" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12" fill="#22d3ee" font-weight="700" letter-spacing="3">WHY THIS IS NOT GENERATED SLOP</text>
+<text x="64" y="106" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="30" fill="#e8eefb" font-weight="800">Six properties a text dump cannot fake</text>
+<text x="64" y="136" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" fill="#8fa3bf" font-weight="400">The prose here may be written with AI assistance. The numbers cannot be: they are read from versions.json and re-checked on every push.</text>
+<rect x="64" y="168" width="376" height="178" rx="16" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
+<rect x="64" y="168" width="376" height="4" rx="2" fill="#34d399" opacity="0.85"/>
+<text x="84" y="204" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11" fill="#34d399" font-weight="700">01</text>
+<text x="84" y="230" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="16.5" fill="#e8eefb" font-weight="700">Measured, not narrated</text>
+<text x="84" y="256" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">Every behavioural claim ships with the QEMU gate that</text>
+<text x="84" y="273" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">produced it. A stage that has not run is marked planned;</text>
+<text x="84" y="290" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">it is never described as working.</text>
+<text x="84" y="328" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="10.5" fill="#34d399" font-weight="500">tests/qemu_*.sh → serial.log</text>
+<rect x="464" y="168" width="376" height="178" rx="16" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
+<rect x="464" y="168" width="376" height="4" rx="2" fill="#22d3ee" opacity="0.85"/>
+<text x="484" y="204" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11" fill="#22d3ee" font-weight="700">02</text>
+<text x="484" y="230" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="16.5" fill="#e8eefb" font-weight="700">Reproducible artifacts</text>
+<text x="484" y="256" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">Each .ko hash is pinned in versions.json. Rebuilding from the</text>
+<text x="484" y="273" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">same profile reproduces the bytes — vmscan_hook 1.1.0 was</text>
+<text x="484" y="290" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">built twice to one sha256.</text>
+<text x="484" y="328" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="10.5" fill="#22d3ee" font-weight="500">sha256 9801942b… · rebuild-identical</text>
+<rect x="864" y="168" width="376" height="178" rx="16" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
+<rect x="864" y="168" width="376" height="4" rx="2" fill="#a78bfa" opacity="0.85"/>
+<text x="884" y="204" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11" fill="#a78bfa" font-weight="700">03</text>
+<text x="884" y="230" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="16.5" fill="#e8eefb" font-weight="700">Machine-checked docs</text>
+<text x="884" y="256" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">check_versions.py fails on a stale hash, a version drift, a</text>
+<text x="884" y="273" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">missing language pair or a hand-edited SVG. The gate was</text>
+<text x="884" y="290" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">proven by breaking a document on purpose.</text>
+<text x="884" y="328" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="10.5" fill="#a78bfa" font-weight="500">10 checks · one exit code</text>
+<rect x="64" y="364" width="376" height="178" rx="16" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
+<rect x="64" y="364" width="376" height="4" rx="2" fill="#fbbf24" opacity="0.85"/>
+<text x="84" y="400" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11" fill="#fbbf24" font-weight="700">04</text>
+<text x="84" y="426" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="16.5" fill="#e8eefb" font-weight="700">Graphics are rendered, not drawn</text>
+<text x="84" y="452" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">All infographics are generated from versions.json and</text>
+<text x="84" y="469" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">compared byte-for-byte in CI. Nobody types a counter into</text>
+<text x="84" y="486" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">a banner.</text>
+<text x="84" y="524" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="10.5" fill="#fbbf24" font-weight="500">assets/*.svg ← tools/make_assets.py</text>
+<rect x="464" y="364" width="376" height="178" rx="16" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
+<rect x="464" y="364" width="376" height="4" rx="2" fill="#60a5fa" opacity="0.85"/>
+<text x="484" y="400" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11" fill="#60a5fa" font-weight="700">05</text>
+<text x="484" y="426" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="16.5" fill="#e8eefb" font-weight="700">Bounded by design</text>
+<text x="484" y="452" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">The CFI bridge disables checks for this module only.</text>
+<text x="484" y="469" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">Rollback is a reboot. livepatch, kexec and ftrace are listed</text>
+<text x="484" y="486" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">as closed — not faked.</text>
+<text x="484" y="524" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="10.5" fill="#60a5fa" font-weight="500">7 proven · 5 closed mechanisms</text>
+<rect x="864" y="364" width="376" height="178" rx="16" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
+<rect x="864" y="364" width="376" height="4" rx="2" fill="#34d399" opacity="0.85"/>
+<text x="884" y="400" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11" fill="#34d399" font-weight="700">06</text>
+<text x="884" y="426" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="16.5" fill="#e8eefb" font-weight="700">Fresh-clone CI</text>
+<text x="884" y="452" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">The static gate runs on a clean checkout: no dist/, no</text>
+<text x="884" y="469" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">network, no cached state, on every push and pull request.</text>
+<text x="884" y="524" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="10.5" fill="#34d399" font-weight="500">.github/workflows/static.yml</text>
+<rect x="64" y="556" width="1152" height="40" rx="12" fill="#0b1424" stroke="#1e2b45" stroke-width="1"/>
+<text x="84" y="581" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12.5" fill="#c9d7ea" font-weight="400">A generated repository convinces you with adjectives. This one asks you to run three commands.</text>
+</svg>

@@ -1,9 +1,15 @@
 # vmscan_hook — a custom `shrink_lruvec` injected through a module
 
+<p align="center">
+  <img src="../assets/vmscan-hook.svg" alt="vmscan_hook mechanism: text-patch entry, kernel list scanners, young-page rotation, procfs control" width="100%">
+</p>
+
 This is the entry point for a custom reclaim path without rebuilding vmscan:
 the module replaces `shrink_lruvec` with its own function, and that function
 runs the kernel's own `shrink_active_list` / `shrink_inactive_list` for the
-pages it chooses.
+pages it chooses. Version 1.1.0 adds the part that makes the loop behave like a
+generation policy: pages accessed inside a TTL window are rotated to the tail of
+their inactive list instead of being reclaimed.
 
 ## Why this is possible on 5.10.236
 
@@ -12,6 +18,9 @@ pages it chooses.
   via `kallsyms_lookup_name` (resolved through a temporary kprobe).
 - `CONFIG_STRICT_KERNEL_RWX=y`: `aarch64_insn_patch_text` performs the
   stop_machine-safe text update (the same mechanism `kpatch`/`ktramp` use).
+- `CONFIG_KPROBES=y`: one kprobe on `mark_page_accessed` records the access time
+  that the rotation policy reads; it is registered before the patch and removed
+  on restore.
 - The vendor CFI runtime is satisfied by the module CFI shim (`__cfi_check`,
   `__cfi_jt_*`), `MODVERSIONS` by the generated `__versions`, and the vendor
   `this_module` layout by the postprocess step.
@@ -23,62 +32,97 @@ pages it chooses.
 shrink_lruvec entry (patched: b my_shrink_lruvec)
         |
         v
-my_shrink_lruvec(lruvec, sc)              [module]
-   get_scan_count(lruvec, sc, nr)         [kernel, via kallsyms]
+my_shrink_lruvec(lruvec, sc)                    [module]
+   rotate_young(lruvec)                         [module]
+      for page in INACTIVE_ANON / INACTIVE_FILE:
+          accessed < ttl_ms ago -> list_move to the list tail
+   get_scan_count(lruvec, sc, nr)               [kernel, via kallsyms]
    while nr[]:
        for lru in INACTIVE_ANON..ACTIVE_FILE:
-           shrink_active_list(...)        [kernel, via kallsyms]
-           shrink_inactive_list(...)      [kernel, via kallsyms]
+           shrink_active_list(...)              [kernel, via kallsyms]
+           shrink_inactive_list(...)            [kernel, via kallsyms]
        stop when sc->nr_reclaimed - r0 >= sc->nr_to_reclaim
 ```
+
+Access times come from a kprobe on `mark_page_accessed`: the page pointer is
+hashed into a fixed 8192-entry table (`(page >> 12) & 8191`) together with
+`jiffies`. `rotate_young()` walks the two inactive lists under `pgdat->lru_lock`,
+moves every page whose stamp is younger than `ttl_ms` to the tail of its list,
+and counts each move in `moved`. The kernel scanner takes from the head, so the
+next reclaim pass evicts old generations first — the pages that were just
+touched survive one more round.
 
 Offsets used (verified by `scprobe`, see [`OFFSETS.md`](OFFSETS.md)):
 `nr_to_reclaim 0x00`, bits `0x28`, `gfp_mask 0x30`, `nr_scanned 0x38`,
 `nr_reclaimed 0x40`.
 
-`/proc/vmscan_hook`: write `1` to install, `0` to restore; read back
-`hooked`, `calls`, `scans`, `reclaimed`.
+`/proc/vmscan_hook`: write `1` to install, `0` to restore, `t<ms>` to set the
+rotation window (default `50` ms). Read back `hooked`, `calls`, `scans`,
+`reclaimed`, `moved`, `ttl_ms`.
 
 ## Observed in QEMU (stock `Image`, 512 MiB, swapless)
 
-`tests/qemu_vmscan_hook_gate.sh`, module sha `3fb1610c…`:
+`tests/qemu_vmscan_hook_gate.sh`, module sha `9801942b…` (built twice from the
+same profile, one byte string both times):
 
 ```
 insmod_rc=0
 hook_rc=0
-poll=10 pgscan=8196
-vmscan_hook target=... hooked=1 calls=34 scans=8209 reclaimed=0
+fillmem: mb=345 n=361758720 p=547460788224
+poll=18 pgscan=9357
+=== COUNTERS ===
+vmscan_hook target=-274739253288 hooked=1 calls=114 scans=20589 reclaimed=0 moved=8323 ttl_ms=20000
+PASS moved>0
 restore_rc=0
-vmscan_hook target=... hooked=0 calls=34 scans=8209 reclaimed=0
+vmscan_hook target=-274739253288 hooked=0 calls=114 scans=20589 reclaimed=0 moved=8323 ttl_ms=20000
 rmmod_rc=0
 proc_gone
 module_gone
 ```
 
-The custom function ran 34 times under real reclaim, scanned 8209 pages with
-the kernel's own list scanners, and the reclaim path stayed alive
-(`pgscan_file=8196`). Restore and unload are clean; no panic.
+The custom function ran 114 times under real reclaim, scanned 20589 pages with
+the kernel's own list scanners, and rotated 8323 young pages to the tail of
+their inactive lists with a 20 s window. `pgscan_file=9357` shows the reclaim
+path stayed alive. Restore and unload are clean; no panic, and the counters stop
+changing after restore — evidence that the patched branch is really gone.
+
+Compared with 1.0.0, the difference is exactly the rotation: 1.0.0 had no
+`moved` counter and let the scanner evict whatever sat at the list head,
+including pages touched microseconds earlier.
 
 ## Composition with `ktramp` (stack gate)
 
 `vmscan_hook` and `ktramp` compose: `my_shrink_lruvec` calls `get_scan_count`,
 which is patched by `ktramp`, so the policy-adjusted `nr[]` drives the custom
-loop. `tests/qemu_vmscan_stack_gate.sh` loads both, patches both, and runs real
+loop, and the rotation then protects the young pages that policy decided to
+keep. `tests/qemu_vmscan_stack_gate.sh` loads both, patches both, and runs real
 reclaim:
 
 ```
-poll=14 pgscan=8210
-ktramp ... policy=1 calls=112 policy_applied=112 sum20=302 delta20=2 seq=112 ttl=2
-vmscan_hook ... hooked=1 calls=112 scans=8579
+poll=18 pgscan=8205
+ktramp target=0xffffffc00843c0c0 tramp=0xffffffc001a8d000 patched=1 policy=1
+   calls=64 policy_applied=64 sum20=420 pol20=20 pre20=618 delta20=198 seq=64 ttl=2
+vmscan_hook target=-274739253288 hooked=1 calls=64 scans=17641 reclaimed=0 moved=5175 ttl_ms=20000
+PASS stack moved>0
 vh_off=0 kt_off=0 vh_rm=0 kt_rm=0 vh_gone kt_gone vh_mod_gone kt_mod_gone
-PASS vmscan stack gate
 ```
+
+`policy_applied=64` means every one of the 64 custom-loop calls received a
+policy-written scan target; `moved=5175` shows rotation still runs while the
+trampoline policy is active. Both modules restore, both unload, both `/proc`
+surfaces disappear.
 
 ## Limits (honest)
 
 - The loop is intentionally simplified: it does not replicate vmscan's
   proportional anon/file adjustment, `blk_start_plug`, or the `scan_adjusted`
   heuristic. `reclaimed` in the readback is the last call's delta.
+- The generation table is a fixed 8192-entry hash of the page address, not a
+  per-page timestamp. Collisions drop a stamp; the rotation is a heuristic, not
+  a precise LRU.
+- Rotation moves pages within one list only. It does not promote anything to the
+  active list, and it does not know about memcg membership beyond the `lruvec`
+  it was called with.
 - It calls `get_scan_count` for the scan targets; a fully custom generation
   policy can replace that call with module-side computation.
 - It replaces `shrink_lruvec` only. `shrink_node_memcgs` still iterates memcgs;
@@ -96,4 +140,9 @@ KB_MODULE_SRC=$PWD/modules/vmscan_hook KB_MODNAME=vmscan_hook \
 KB_IMAGE=$HOME/tmp/kernel_Image.bin \
   KB_KO=$PWD/modules/vmscan_hook/vmscan_hook.ko \
   bash tests/qemu_vmscan_hook_gate.sh
+
+KB_IMAGE=$HOME/tmp/kernel_Image.bin \
+  KB_KO=$PWD/modules/vmscan_hook/vmscan_hook.ko \
+  KB_KO2=$PWD/modules/ktramp/ktramp.ko \
+  bash tests/qemu_vmscan_stack_gate.sh
 ```

@@ -15,5 +15,10 @@
   only trusted code.
 - `Makefile` — pass `KB_CFI=1` for CFI kernels, `KB_CFI=0` otherwise.
 
+Artifact: `kbootstrap.ko` 1.0.0, sha256
+`065f520b1b562f55eef48a138a12d4df3c18d51357bcbacb39b46d1e9a33c593`, gated by
+`tests/qemu_payload_gate.sh` (CFI bridge, kallsyms resolution, raw payload,
+`/proc` surface).
+
 The source is intentionally a reference, not a universal binary. The builder
 adapts config, vermagic, symbol versions and `struct module` offsets.

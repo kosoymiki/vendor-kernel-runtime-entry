@@ -4,6 +4,10 @@
 > modules, stages and target profiles land as they pass their QEMU gates;
 > interfaces and evidence are updated together.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/kosoymiki/vendor-kernel-runtime-entry/master/assets/module-package.svg" alt="Install path of module.zip on a KernelSU device: install, boot, verify, observe, rollback by reboot" width="100%">
+</p>
+
 Install `module.zip` with KernelSU/ReSukiSU:
 
 ```sh
