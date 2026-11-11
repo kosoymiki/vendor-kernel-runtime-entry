@@ -143,13 +143,18 @@ generation. QEMU (`sha a366be99…`): `calls=88`, `scans=20791`,
 `moved=9266019`, `buckets=12383,2586,1209,9249841`, `pgscan_file=9578`,
 restore/unload clean.
 
-Folio note: the page tables normalize compound heads (`compound_head()`), but
-this vendor image produces no compound LRU pages in QEMU — `enabled_store()`
-is compiled out under `CONFIG_CONT_PTE_HUGEPAGE` (`mm/huge_memory.c:204`),
-writing the resolved `transparent_hugepage_flags` symbol did not change the
-sysfs-visible value, and `AnonHugePages` stayed `0 kB` (`compound=0`). The
-normalization remains unit-tested; the QEMU folio proof is not available on
-this image.
+Folio note (r2-proven): `enabled_store()` is a four-instruction stub in the
+stock Image (`mov x0, x3; ret` at `0xffffffea8bf15874`), so the sysfs THP
+switch cannot be changed. The vendor CHP path is closed in the Image too:
+`cmdline_parse_prjname` (`0xffffffea8deca55c`) unconditionally clears
+`cmdline_cont_pte_sup_prjname`, so `cont_pte_cma_reserve()` never enables
+`cont_pte_huge_page_enabled_key` and the `__init` `cont_pte_huge_page_init`
+never runs. Entry-point table: static key (initcall dead), early_param
+(always false), sysfs (stub), module flag write (no effect), direct
+`static_key_slow_inc` (would run an uninitialized pool). Hence no compound/huge
+LRU pages on this image (`AnonHugePages=0`, `compound=0`); the module
+normalizes compound heads and keeps the folio path ready for a kernel whose
+CHP/THP init is enabled, with the normalization unit-tested.
 
 ## Limits (honest)
 

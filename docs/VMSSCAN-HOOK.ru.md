@@ -145,12 +145,19 @@ restore_rc=0 ... rmmod_rc=0 proc_gone module_gone
 `moved=9266019`, `buckets=12383,2586,1209,9249841`, `pgscan_file=9578`,
 restore/unload чистые.
 
-Folio-замечание: таблицы нормализуют compound-head (`compound_head()`), но это
-vendor-ядро в QEMU не производит compound-страниц на LRU — `enabled_store()`
-скомпилирован вне `CONFIG_CONT_PTE_HUGEPAGE` (`mm/huge_memory.c:204`), запись
-резолвнутого символа `transparent_hugepage_flags` не изменила sysfs-значение,
-а `AnonHugePages` остался `0 kB` (`compound=0`). Нормализация покрыта
-unit-тестом; QEMU-доказательство folio на этом образе недоступно.
+Folio-замечание (доказано r2): `enabled_store()` в стоковом Image — заглушка
+из четырёх инструкций (`mov x0, x3; ret` по `0xffffffea8bf15874`), поэтому
+sysfs-переключатель THP изменить нельзя. Vendor-путь CHP в Image тоже закрыт:
+`cmdline_parse_prjname` (`0xffffffea8deca55c`) безусловно сбрасывает
+`cmdline_cont_pte_sup_prjname`, поэтому `cont_pte_cma_reserve()` никогда не
+включает `cont_pte_huge_page_enabled_key`, а `__init`-функция
+`cont_pte_huge_page_init` не запускается. Таблица entry points: static key
+(initcall мёртв), early_param (всегда false), sysfs (заглушка), запись флага
+из модуля (без эффекта), прямой `static_key_slow_inc` (запустит
+неинициализированный pool). Итог: compound/huge страниц на LRU в этом образе
+нет (`AnonHugePages=0`, `compound=0`); модуль нормализует compound-head и
+держит folio-путь готовым для ядра с включённым CHP/THP-init, нормализация
+покрыта unit-тестом.
 
 ## Ограничения (честно)
 

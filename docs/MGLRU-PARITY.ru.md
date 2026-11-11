@@ -24,7 +24,7 @@ structure** — структура не заменяется (side table вме�
 | порог refault | сравнение с `max_seq - min_seq` | `32 * window`, окно масштабируется адаптивным ttl | approximate |
 | адаптивный `min_ttl` | `min_ttl_ms` в миллисекундах | ttl 2..4 из отношения refault/eviction | approximate |
 | per-generation LRU-списки | списки `lru_gen` | модуль сортирует inactive-списки ядра в 4 возрастных bucket'а, oldest-first, под `lru_lock`; структур `lru_gen` нет | approximate (реальный порядок списков) |
-| folio-пути | multi-order folios | нормализация head-страниц в таблицах модуля; QEMU не производит compound-страниц на LRU (vendor THP runtime-выключен) | partial (unit-tested) |
+| folio-пути | multi-order folios | нормализация head-страниц в таблицах модуля; QEMU не производит compound-страниц на LRU (r2-доказанный vendor-гейт THP/CHP init) | partial (unit-tested) |
 | патч текста / SMP | n/a | `aarch64_insn_patch_text` (stop_machine), restore | **exact** |
 | кастомный `shrink_lruvec` (вход vmscan) | пересборка исходников | `vmscan_hook`: функция модуля заменяет `shrink_lruvec`, вызывает штатные `shrink_active_list`/`shrink_inactive_list` | **exact entry point**, приблизительный цикл |
 | наблюдаемость | tracepoints | kprobes + vendor-tracepoint; счётчики в `/proc` | **exact** |
