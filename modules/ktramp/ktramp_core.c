@@ -48,6 +48,8 @@ static struct kprobe akp = { .symbol_name = "mark_page_accessed" };
 static int ak_reg;
 #define MGN 256
 static unsigned long mgkey[MGN], mggen[MGN], mgref[MGN], mgscan[MGN];
+static unsigned long mgseq[MGN], mgwin[MGN];   /* per-memcg scan-epoch clock */
+static unsigned long last_seq, last_win;
 static unsigned long mgattr_exact, mgattr_fb, folio_heads, dist_hist[4], branch_hist[8];
 static unsigned long snap_sum, snap_pol, snap_sum2, snap_pol2; /* fixed endpoints: calls 1..20 and 1..40 */
 static void *cur_memcg;
@@ -148,7 +150,11 @@ static int a_handler(struct kprobe *p, struct pt_regs *r)
 	(void)p;
 	if(!page) return 0;
 	page=folio_head(page);
-	ev_store(page, cur_gen ? cur_gen : 1);
+	{
+		unsigned long memcg=*(unsigned long *)(page+offsetof(struct page, mem_cgroup));
+		mi=mg_find(memcg);
+		ev_store(page, (mi>=0 && *(mgseq+mi)) ? *(mgseq+mi) : (cur_gen ? cur_gen : 1));
+	}
 	if(page_to_lruvec_fn && contig_pgdat){
 		struct lruvec *plv=page_to_lruvec_fn((struct page *)page, contig_pgdat);
 		if(plv){ mi=lv_find(plv); if(mi>=0) (*(lvacc+mi))++; }
@@ -159,18 +165,19 @@ static int a_handler(struct kprobe *p, struct pt_regs *r)
 
 static int ev_handler(struct kprobe *p, struct pt_regs *r)
 {
-	unsigned long page=r->regs[0], memcg, eg;
-	int mi;
+	unsigned long page=r->regs[0], memcg, eg, cur;
+	int mi, mgi;
 	(void)p;
 	if(page){ page=folio_head(page);
 		eg=ev_load(page);
-		ev_store(page, cur_gen);
 		memcg=*(unsigned long *)(page+offsetof(struct page, mem_cgroup));
 		mg_touch(memcg,0);
+		mgi=mg_find(memcg);
+		cur=(mgi>=0 && *(mgseq+mgi)) ? *(mgseq+mgi) : cur_gen;
 		mi=lv_for_memcg(memcg);
 		if(mi<0) mi=cur_lv;
 		if(mi>=0){
-			if(eg && cur_gen-eg<=1) (*(lvyoung+mi))++;
+			if(eg && cur && eg==cur) (*(lvyoung+mi))++;
 			else (*(lvcold+mi))++;
 		}
 	}
@@ -204,7 +211,9 @@ static void wrap(void *lv, void *sc, void *nr)
 		if (exact && memcg) {
 			mi = mg_find(memcg);
 			if (mi >= 0) {
-				gen = (int)(*(mggen + mi) & 1);
+				last_seq = *(mgseq + mi);
+				last_win = *(mgwin + mi) ? *(mgwin + mi) : 1;
+				gen = (int)((last_seq ? last_seq : *(mggen + mi)) & 1);
 				if ((++(*(mgscan + mi)) & 63) == 0)
 					(*(mggen + mi))++;
 				mgattr_exact++;
@@ -219,7 +228,7 @@ static void wrap(void *lv, void *sc, void *nr)
 			unsigned long y = (cur_lv >= 0) ? *(lvyoung + cur_lv) : 0;
 			unsigned long c = (cur_lv >= 0) ? *(lvcold + cur_lv) : 0;
 			if (force_young || force_cold) { y = force_young; c = force_cold; }
-			kt_policy_nr(n, d, gen, can_swap, y, c, &branch);
+			kt_policy_nr(n, d, 32UL * last_win, gen, can_swap, y, c, &branch);
 			if (branch > 0 && branch < 8)
 				branch_hist[branch]++;
 		}
@@ -306,9 +315,15 @@ static u32 br(u32 insn_addr, unsigned long dest, unsigned long src)
 
 static void tp_memcg_probe(void *data, void *memcg, bool *skip)
 {
+	int mi;
 	(void)data; (void)skip;
 	cur_memcg = memcg;
 	tp_seq++;
+	mi = mg_find((unsigned long)memcg);
+	if (mi >= 0) {
+		(*(mgseq + mi))++;
+		(*(mgwin + mi)) = (*(mgseq + mi)) > 2 ? 2 : (*(mgseq + mi));
+	}
 }
 
 static void tp_attach(void)
@@ -392,6 +407,7 @@ static ssize_t k_read(struct file*f,char __user*buf,size_t len,loff_t*off)
 		n=0; for(i=0;i<MGN;i++) if(*(mgkey+i)) n++;
 		put(" mg=");putdec(n);
 		put(" mgattr=");putdec((long)mgattr_exact);put("/");putdec((long)mgattr_fb);
+		put(" seq=");putdec((long)last_seq);put(" win=");putdec((long)last_win);
 		put(" folio=");putdec((long)folio_heads);
 		put(" dist_hist=");putdec((long)dist_hist[0]);put(",");putdec((long)dist_hist[1]);put(",");putdec((long)dist_hist[2]);put(",");putdec((long)dist_hist[3]);
 		put(" branch=");putdec((long)branch_hist[1]);put(",");putdec((long)branch_hist[2]);put(",");putdec((long)branch_hist[3]);put(",");putdec((long)branch_hist[4]);put(",");putdec((long)branch_hist[5]);put(",");putdec((long)branch_hist[6]);put(",");putdec((long)branch_hist[7]);

@@ -60,11 +60,11 @@ CFI-проверки **для этого модуля**; это не глоба�
 `nr[]`.
 
 Измерено под **реальным reclaim** (ext4-файл через `loop0` + 345 MiB анонимного
-давления, см. `docs/MEASURING-RECLAIM.md`), гейт Stage E: холодный кэш
-`nr_calls=108`, ветка 7 (106 решений полного скана); форс young `y80` — ветка 6,
-`delta20=376/736` = 51.1%; форс distance `t5` — ветка 1, 100%; реальный refault
-— ветка 2, `tdist=847`; затем `patched=0`, `rmmod_rc=0`, `proc_gone`,
-`module_gone`.
+давления, см. `docs/MEASURING-RECLAIM.md`), гейт Stage F: холодный кэш
+`seq=125`, `win=2`, ветка 7 (123 решения полного скана); форс young `y80` —
+ветка 6, `delta20=591/1167` = 50.6%; форс distance `t5` — ветка 1, 100%;
+реальный refault — ветка 2, `tdist=847`; затем `patched=0`, `rmmod_rc=0`,
+`proc_gone`, `module_gone`.
 
 Границы:
 

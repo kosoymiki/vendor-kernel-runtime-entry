@@ -103,47 +103,57 @@ static void test_policy(void)
 	int br;
 
 	n[0] = 10; n[1] = 20; n[2] = 30; n[3] = 40;
-	kt_policy_nr(n, 5, 0, 1, 0, 0, &br);
+	kt_policy_nr(n, 5, 32, 0, 1, 0, 0, &br);
 	CHECK(br == 1 && n[2] == 0 && n[3] == 0 && n[0] == 10 && n[1] == 20,
 	      "policy: refault d<=32 zeroes file, keeps anon (branch 1)");
 
 	n[0] = 10; n[1] = 20; n[2] = 30; n[3] = 40;
-	kt_policy_nr(n, 100, 0, 1, 0, 0, &br);
+	kt_policy_nr(n, 100, 32, 0, 1, 0, 0, &br);
 	CHECK(br == 2 && n[2] == 15 && n[3] == 20 && n[0] == 10 && n[1] == 20,
 	      "policy: refault d>32 halves file (branch 2)");
 
 	n[0] = 10; n[1] = 20; n[2] = 30; n[3] = 40;
-	kt_policy_nr(n, 0, 1, 1, 0, 0, &br);
+	kt_policy_nr(n, 0, 32, 1, 1, 0, 0, &br);
 	CHECK(br == 3 && n[0] == 0 && n[1] == 0 && n[2] == 30 && n[3] == 40,
 	      "policy: odd generation zeroes anon (branch 3)");
 
 	n[0] = 10; n[1] = 20; n[2] = 30; n[3] = 40;
-	kt_policy_nr(n, 0, 0, 1, 0, 0, &br);
+	kt_policy_nr(n, 0, 32, 0, 1, 0, 0, &br);
 	CHECK(br == 4 && n[2] == 15 && n[3] == 20 && n[0] == 10 && n[1] == 20,
 	      "policy: even generation halves file (branch 4)");
 
 	n[0] = 10; n[1] = 20; n[2] = 30; n[3] = 40;
-	kt_policy_nr(n, 0, 0, 1, 80, 20, &br);
+	kt_policy_nr(n, 0, 32, 0, 1, 80, 20, &br);
 	CHECK(br == 6 && n[2] == 15 && n[3] == 20 && n[0] == 10 && n[1] == 20,
 	      "policy: young working set >60% halves file (branch 6)");
 
 	n[0] = 10; n[1] = 20; n[2] = 30; n[3] = 40;
-	kt_policy_nr(n, 0, 0, 1, 10, 90, &br);
+	kt_policy_nr(n, 0, 32, 0, 1, 10, 90, &br);
 	CHECK(br == 7 && n[2] == 30 && n[3] == 40 && n[0] == 10 && n[1] == 20,
 	      "policy: cold pages dominate -> full scan (branch 7)");
 
 	n[0] = 10; n[1] = 20; n[2] = 30; n[3] = 40;
-	kt_policy_nr(n, 0, 0, 1, 40, 60, &br);
+	kt_policy_nr(n, 40, 64, 0, 1, 0, 0, &br);
+	CHECK(br == 1 && n[2] == 0 && n[3] == 0,
+	      "policy: window-scaled threshold d=40 <= 64 zeroes file");
+
+	n[0] = 10; n[1] = 20; n[2] = 30; n[3] = 40;
+	kt_policy_nr(n, 70, 64, 0, 1, 0, 0, &br);
+	CHECK(br == 2 && n[2] == 15 && n[3] == 20,
+	      "policy: d=70 > window 64 halves file");
+
+	n[0] = 10; n[1] = 20; n[2] = 30; n[3] = 40;
+	kt_policy_nr(n, 0, 32, 0, 1, 40, 60, &br);
 	CHECK(br == 4 && n[2] == 15 && n[3] == 20,
 	      "policy: mixed working set falls back to generation branch");
 
 	n[0] = 10; n[1] = 20; n[2] = 30; n[3] = 40;
-	kt_policy_nr(n, 5, 0, 0, 0, 0, &br);
+	kt_policy_nr(n, 5, 32, 0, 0, 0, 0, &br);
 	CHECK(br == 1 && n[0] == 0 && n[1] == 0 && n[2] == 0 && n[3] == 0,
 	      "policy: no swap does not override refault branch, zeroes anon");
 
 	n[0] = 10; n[1] = 20; n[2] = 30; n[3] = 40;
-	kt_policy_nr(n, 0, 0, 0, 0, 0, &br);
+	kt_policy_nr(n, 0, 32, 0, 0, 0, 0, &br);
 	CHECK(br == 4 && n[0] == 0 && n[1] == 0 && n[2] == 15 && n[3] == 20,
 	      "policy: no swap keeps file branch (halve), zeroes anon");
 }

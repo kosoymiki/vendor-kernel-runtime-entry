@@ -1,4 +1,4 @@
-# MGLRU probe: статус Stage A/B/E (экспериментально)
+# MGLRU probe: статус Stage A/B/E/F (экспериментально)
 
 `modules/mglru` — **probe**, не полный backport 7.4 MGLRU. Он измеряет reclaim
 path 5.10 и проверяет generation-aware политики через доказанный entry.
@@ -20,6 +20,10 @@ path 5.10 и проверяет generation-aware политики через д�
   полный скан, когда доминируют холодные страницы. Shadow-refault distance и
   per-memcg атрибуция — в том же модуле. Детали:
   [`MGLRU-STAGE-E.ru.md`](MGLRU-STAGE-E.ru.md).
+- **Stage F (M4 subset, `ktramp` 1.2.0):** per-memcg часы scan-эпох из
+  vendor-tracepoint (`seq`, `window=min(seq,2)`), порог refault по окну
+  (`32*window`), young/cold по эпохе. Детали:
+  [`MGLRU-STAGE-F.ru.md`](MGLRU-STAGE-F.ru.md).
 - kprobe на `mark_page_accessed` заполняет side table поколений (1024 записи).
 
 Mode 5 берёт `scan_control` из `regs[1]` и пишет поле `s8 priority` по оффсету
@@ -73,9 +77,10 @@ Return-handler не срабатывал (`modified=0`, `nmissed=0`): kprobe н�
   патчингом, per-memcg таблицы поколений, shadow-refault distance,
   young/cold-тиринг, fixed per-call `delta/pre`, restore и unload. См.
   [`MGLRU-STAGE-E.ru.md`](MGLRU-STAGE-E.ru.md).
-- **M4 (дальше):** parity-subset и gap-report против 7.4 MGLRU
-  (`min_seq/max_seq`-часы, per-generation LRU-списки, folio-пути) с явным
-  списком того, что runtime-модуль заменить не может.
+- **M4 (сделан как Stage F):** per-memcg часы scan-эпох, порог refault по
+  окну, young/cold по эпохе. См. [`MGLRU-STAGE-F.ru.md`](MGLRU-STAGE-F.ru.md).
+- **M5 (дальше):** полный parity-report: адаптивный `min_ttl`,
+  per-generation LRU-списки, folio-пути и явный gap-list точности.
 
 ## Как правильно измерять reclaim
 

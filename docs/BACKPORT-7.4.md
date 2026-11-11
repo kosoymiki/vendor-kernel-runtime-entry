@@ -66,7 +66,7 @@ when the vendor path is absent.)
 
 | id | feature | 7.4 source | 5.10 target | mechanism | tier | status |
 |---|---|---|---|---|---|---|
-| F-001 | MGLRU | `mm/vmscan.c` (`lru_gen*`, 216 refs), `mm/workingset.c`, `Documentation/admin-guide/mm/multigen_lru.rst` | `mm/vmscan.c`, `mm/workingset.c`, lruvec/page fields | A: kprobe observability; B: policy hooks; C: trampolines; side table for generation state | T1 | **Stage E verified (`ktramp` 1.1.0)** |
+| F-001 | MGLRU | `mm/vmscan.c` (`lru_gen*`, 216 refs), `mm/workingset.c`, `Documentation/admin-guide/mm/multigen_lru.rst` | `mm/vmscan.c`, `mm/workingset.c`, lruvec/page fields | A: kprobe observability; B: policy hooks; C: trampolines; side table for generation state | T1 | **Stage F — M4 subset (`ktramp` 1.2.0)** |
 | F-002 | VMA rework | `mm/vma.c` (3,715 L), `mm/mmap.c` | `mm/mmap.c`, `mm/memory.c` | source/trampolines; high risk | T1 | inventory |
 | F-003 | DAMON | `mm/damon/core.c` (4,311 L) | `CONFIG_DAMON=y`, `DAMON_PADDR=y`, `DAMON_RECLAIM=y`; no `DAMON_SYSFS` | native, not administrable; no backport needed | T1 | **native (observed)** |
 | F-004 | alloc_tag | `mm/alloc_tag.c` (1,367 L) | `mm/` | source/module; page_ext | T1 | inventory |
@@ -131,8 +131,13 @@ QEMU evidence (`tests/qemu_ktramp_gate.sh`, stock Image, 512 MiB, swapless):
 | real refault | `MADV_PAGEOUT` 128 KiB | 2 | `tdist=847` |
 | restore + unload | — | — | `patched 1→0`, `rmmod_rc=0`, `proc_gone`, `module_gone` |
 
-What remains for M4: the exact `min_seq/max_seq` reclaim clock, per-generation
-LRU lists, and folio paths. These are delivered as side tables plus
+Stage F (M4 subset, `ktramp` 1.2.0) adds the per-memcg scan-epoch clock from
+the vendor tracepoint (`seq`, `window=min(seq,2)`) and scales the refault
+threshold by the window (`32*window`); observed `seq` 25→141, `win=2`, cold
+branch 7, `y80` 50.64%, `t5` 100%, refault branch 2 (`tdist=847`).
+
+What remains for M5: adaptive `min_ttl`, per-generation LRU lists, and folio
+paths. These are delivered as side tables plus
 `kpatch`/`ktramp`/kprobe hooks on the reclaim path — not as a vmscan rebuild.
 The compatibility layer (CFI, MODVERSIONS, vermagic, init/exit relocations,
 SMP-safe patching) is the point of `kbootstrap` + `kpatch` + `ktramp`. The gap

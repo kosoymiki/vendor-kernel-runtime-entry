@@ -1,4 +1,4 @@
-# MGLRU probe: Stage A/B/E status (experimental)
+# MGLRU probe: Stage A/B/E/F status (experimental)
 
 `modules/mglru` is a **probe**, not a full 7.4 MGLRU backport. It exists to
 measure the 5.10 reclaim path and to test generation-aware policies through the
@@ -21,6 +21,10 @@ proven entry.
   scan when cold pages dominate. Shadow-based refault distance and per-memcg
   attribution are part of the same module. Details:
   [`MGLRU-STAGE-E.md`](MGLRU-STAGE-E.md).
+- **Stage F (M4 subset, `ktramp` 1.2.0):** per-memcg scan-epoch clock from the
+  vendor tracepoint (`seq`, `window=min(seq,2)`), window-scaled refault
+  threshold (`32*window`), young/cold classification by epoch. Details:
+  [`MGLRU-STAGE-F.md`](MGLRU-STAGE-F.md).
 - `mark_page_accessed` kprobe feeds a 1024-entry page-generation side table.
 
 Mode 5 reads `scan_control` from `regs[1]` and writes the `s8 priority` field at
@@ -75,9 +79,11 @@ not comparable across runs; only a fixed-endpoint measurement can settle it.
   SMP-safe patching, per-memcg generation tables, shadow refault distance,
   young/cold tiering, fixed per-call `delta/pre` metrics, restore and unload.
   See [`MGLRU-STAGE-E.md`](MGLRU-STAGE-E.md).
-- **M4 (next):** parity subset and gap report against 7.4 MGLRU
-  (`min_seq/max_seq` clock, per-generation LRU lists, folio paths) with the
-  explicit list of what a runtime module cannot replace.
+- **M4 (landed as Stage F):** per-memcg scan-epoch clock, window-scaled
+  refault threshold, young/cold by epoch. See
+  [`MGLRU-STAGE-F.md`](MGLRU-STAGE-F.md).
+- **M5 (next):** full parity report: adaptive `min_ttl`, per-generation LRU
+  lists, folio paths, and the explicit fidelity gap list.
 
 ## Measuring reclaim correctly
 

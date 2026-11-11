@@ -1,8 +1,8 @@
 {
   "_comment": "Single source of truth for release and module metadata. tools/make_assets.py renders it into the SVGs; tools/check_versions.py enforces that nothing drifts. Bump here first, then run the checklist in docs/RELEASE.md.",
   "release": {
-    "version": "1.1.0",
-    "versionCode": 6,
+    "version": "1.2.0",
+    "versionCode": 7,
     "date": "2026-11-11"
   },
   "modules": [
@@ -26,11 +26,11 @@
     },
     {
       "name": "ktramp",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "status": "experimental",
-      "sha256": "85d01060cc47d96146608ccbadedfbe3eb9d3bcae3eb9369cd5c32543468c9fd",
+      "sha256": "34bf93d01b2a37b88509f7cdeb316a245c705afc6de0cfe92d48fb6be2f21100",
       "gate": "tests/qemu_ktramp_gate.sh",
-      "note": "Stage E generation-tier policy: per-memcg generation, young/cold, shadow refault distance",
+      "note": "Stage F M4 subset: per-memcg scan-epoch clock (seq/window), young/cold, window-scaled refault distance",
       "dir": "modules/ktramp"
     },
     {
@@ -45,31 +45,34 @@
   ],
   "evidence": {
     "ktramp": {
-      "calls": 108,
+      "calls": 125,
       "log": "$PREFIX/tmp/ktramp-stagee.*/serial-*.log",
-      "stage_e": {
+      "stage_f": {
         "cold": {
-          "branch7": 106,
-          "pre20": 610,
+          "branch7": 123,
+          "seq": 125,
+          "win": 2,
+          "pre20": 608,
           "delta20": 2,
-          "yc": "0/398",
-          "nr_calls": 108
+          "nr_calls": 125
         },
         "y80": {
-          "branch6": 127,
-          "pre20": 736,
-          "delta20": 376,
-          "suppression_pct": 51.1
+          "branch6": 133,
+          "pre20": 1167,
+          "delta20": 591,
+          "suppression_pct": 50.64
         },
         "t5": {
-          "branch1": 80,
+          "branch1": 25,
           "pre20": 8703,
           "delta20": 8703,
           "suppression_pct": 100.0
         },
         "refault": {
-          "branch2": 137,
-          "tdist": 847
+          "branch2": 141,
+          "tdist": 847,
+          "seq": 141,
+          "win": 2
         },
         "restore": {
           "patched": "1->0",

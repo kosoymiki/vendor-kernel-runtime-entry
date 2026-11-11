@@ -61,11 +61,11 @@ lets the wrapper call the trampoline — so the original code still runs while t
 module observes and can adjust `nr[]`.
 
 Measured under **real reclaim** (ext4 file through `loop0` + 345 MiB anonymous
-pressure, see `docs/MEASURING-RECLAIM.md`), Stage E gate: cold cache
-`nr_calls=108`, branch 7 (106 full-scan decisions); forced young `y80` branch 6,
-`delta20=376/736` = 51.1%; forced distance `t5` branch 1, 100%; real refault
-branch 2, `tdist=847`; then `patched=0`, `rmmod_rc=0`, `proc_gone`,
-`module_gone`.
+pressure, see `docs/MEASURING-RECLAIM.md`), Stage F gate: cold cache
+`seq=125`, `win=2`, branch 7 (123 full-scan decisions); forced young `y80`
+branch 6, `delta20=591/1167` = 50.6%; forced distance `t5` branch 1, 100%;
+real refault branch 2, `tdist=847`; then `patched=0`, `rmmod_rc=0`,
+`proc_gone`, `module_gone`.
 
 Limits:
 

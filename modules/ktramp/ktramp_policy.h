@@ -109,12 +109,13 @@ static inline int kt_dist_bucket(unsigned long dist)
  * MGLRU's can_swap check: without swap, scanning anon is wasted work, so the
  * no-swap branch wins over refault/generation.
  */
-static inline void kt_policy_nr(unsigned long *n, unsigned long d, int gen,
+static inline void kt_policy_nr(unsigned long *n, unsigned long d,
+				unsigned long d_small, int gen,
 				int swap, unsigned long young, unsigned long cold,
 				int *branch)
 {
 	if (d) {
-		if (d <= 32) {
+		if (d <= (d_small ? d_small : 32)) {
 			n[2] = 0;
 			n[3] = 0;
 			*branch = 1;
