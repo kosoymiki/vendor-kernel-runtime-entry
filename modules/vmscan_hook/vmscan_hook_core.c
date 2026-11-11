@@ -47,6 +47,7 @@ static unsigned long target;		/* shrink_lruvec */
 static u32 orig0;
 static int hooked;
 static unsigned long calls, scans, reclaimed_pages, moved, ttl_ms = 50;
+static unsigned long sb[4];
 static patch_fn do_patch;
 static struct proc_dir_entry *vpde;
 static char vbuf[512];
@@ -88,16 +89,15 @@ static int a_handler(struct kprobe *p, struct pt_regs *r)
 	return 0;
 }
 
-/* MGLRU-style list walk: move pages accessed within ttl_ms to the tail of
- * their inactive list, so the kernel scanner (which takes from the head)
- * evicts old generations first. Runs under pgdat->lru_lock. */
+/* MGLRU-style list ordering: bucket inactive pages by age (0,1,2,3+ ttl
+ * windows) and rebuild each list oldest-first, so the kernel scanner (which
+ * takes from the head) evicts the oldest generation first. Under lru_lock. */
 static void rotate_young(struct lruvec *lv)
 {
 	struct pglist_data *pgdat = lv->pgdat;
-	LIST_HEAD(ya);
-	LIST_HEAD(yf);
 	struct page *page, *tmp;
 	unsigned long flags, now, ttl;
+	int lru, b;
 
 	if (!pgdat || !jiffies_p || !ttl_ms)
 		return;
@@ -106,24 +106,33 @@ static void rotate_young(struct lruvec *lv)
 	if (!ttl)
 		ttl = 1;
 	spin_lock_irqsave(&pgdat->lru_lock, flags);
-	list_for_each_entry_safe(page, tmp, &lv->lists[LRU_INACTIVE_ANON], lru) {
-		unsigned long t = g_load((unsigned long)page);
+	for (lru = 0; lru <= 2; lru += 2) {
+		LIST_HEAD(b0); LIST_HEAD(b1); LIST_HEAD(b2); LIST_HEAD(b3);
+		LIST_HEAD(ord);
 
-		if (t && now - t < ttl) {
-			list_move(&page->lru, &ya);
-			moved++;
-		}
-	}
-	list_for_each_entry_safe(page, tmp, &lv->lists[LRU_INACTIVE_FILE], lru) {
-		unsigned long t = g_load((unsigned long)page);
+		list_for_each_entry_safe(page, tmp, &lv->lists[lru], lru) {
+			unsigned long t = g_load((unsigned long)page);
+			unsigned long age = t ? now - t : ~0UL;
 
-		if (t && now - t < ttl) {
-			list_move(&page->lru, &yf);
+			if (age < ttl) b = 0;
+			else if (age < 2 * ttl) b = 1;
+			else if (age < 4 * ttl) b = 2;
+			else b = 3;
+			switch (b) {
+			case 0: list_move(&page->lru, &b0); break;
+			case 1: list_move(&page->lru, &b1); break;
+			case 2: list_move(&page->lru, &b2); break;
+			default: list_move(&page->lru, &b3); break;
+			}
 			moved++;
+			sb[b]++;
 		}
+		list_splice_tail(&b3, &ord);
+		list_splice_tail(&b2, &ord);
+		list_splice_tail(&b1, &ord);
+		list_splice_tail(&b0, &ord);
+		list_splice(&ord, &lv->lists[lru]);
 	}
-	list_splice_tail(&ya, &lv->lists[LRU_INACTIVE_ANON]);
-	list_splice_tail(&yf, &lv->lists[LRU_INACTIVE_FILE]);
 	spin_unlock_irqrestore(&pgdat->lru_lock, flags);
 }
 
@@ -228,7 +237,7 @@ static ssize_t v_read(struct file *f, char __user *buf, size_t len, loff_t *off)
 	put_(" hooked="); putdec_(hooked);
 	put_(" calls="); putdec_((long)calls);
 	put_(" scans="); putdec_((long)scans);
-	put_(" reclaimed="); putdec_((long)reclaimed_pages); put_(" moved="); putdec_((long)moved); put_(" ttl_ms="); putdec_((long)ttl_ms);
+	put_(" reclaimed="); putdec_((long)reclaimed_pages); put_(" moved="); putdec_((long)moved); put_(" buckets="); putdec_((long)sb[0]); put_(","); putdec_((long)sb[1]); put_(","); putdec_((long)sb[2]); put_(","); putdec_((long)sb[3]); put_(" ttl_ms="); putdec_((long)ttl_ms);
 	put_("\n");
 	return simple_read_from_buffer(buf, len, off, vbuf, (size_t)(vp - vbuf));
 }

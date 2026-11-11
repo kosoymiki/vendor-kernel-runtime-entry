@@ -1,8 +1,8 @@
 {
   "_comment": "Single source of truth for release and module metadata. tools/make_assets.py renders it into the SVGs; tools/check_versions.py enforces that nothing drifts. Bump here first, then run the checklist in docs/RELEASE.md.",
   "release": {
-    "version": "1.5.0",
-    "versionCode": 10,
+    "version": "1.6.0",
+    "versionCode": 11,
     "date": "2026-11-11"
   },
   "modules": [
@@ -44,11 +44,11 @@
     },
     {
       "name": "vmscan_hook",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "status": "experimental",
-      "sha256": "9801942be55f90642b26e802bd9e241170340486f72e1e9e35f58ea441f065cd",
+      "sha256": "996ec6fde754bed693fe1818db9f6d4131594808212e071be743b69dd99410dc",
       "gate": "tests/qemu_vmscan_hook_gate.sh",
-      "note": "custom shrink_lruvec via module text patch, kernel list scanners, young-page rotation (moved/ttl_ms)",
+      "note": "custom shrink_lruvec + generation-bucket sort (oldest-first) on inactive lists",
       "dir": "modules/vmscan_hook"
     }
   ],
@@ -114,11 +114,17 @@
       "log": "$PREFIX/tmp/mglru-gate.*/serial.log"
     },
     "vmscan_hook": {
-      "calls": 114,
-      "scans": 20589,
-      "moved": 8323,
+      "calls": 89,
+      "scans": 19583,
+      "moved": 8908715,
+      "buckets": [
+        5743,
+        865,
+        0,
+        8902107
+      ],
       "ttl_ms": 20000,
-      "pgscan_file": 9357,
+      "pgscan_file": 9045,
       "restore": {
         "hooked": "1->0",
         "rmmod_rc": 0,

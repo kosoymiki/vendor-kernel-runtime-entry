@@ -30,8 +30,8 @@ block. `tools/make_assets.py` reads it; `tools/check_versions.py` enforces it.
 {
   "release": { "version": "1.5.0", "versionCode": 10, "date": "2026-11-11" },
   "modules": [
-    { "name": "vmscan_hook", "version": "1.1.0", "status": "experimental",
-      "sha256": "9801942be55f90642b26e802bd9e241170340486f72e1e9e35f58ea441f065cd",
+    { "name": "vmscan_hook", "version": "1.2.0", "status": "experimental",
+      "sha256": "996ec6fde754bed693fe1818db9f6d4131594808212e071be743b69dd99410dc",
       "gate": "tests/qemu_vmscan_hook_gate.sh",
       "dir": "modules/vmscan_hook" }
   ],

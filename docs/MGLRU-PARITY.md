@@ -23,7 +23,7 @@ as structure** — the data structure is not replaced (side table instead).
 | refault distance | shadow timestamp vs `nonresident_age` | identical: `shadow >> 19`, `lruvec+96`, 46-bit mask | **exact** |
 | refault threshold | compared to `max_seq - min_seq` | `32 * window`, window scaled by adaptive ttl | approximate |
 | adaptive `min_ttl` | ms-based `min_ttl_ms` | ttl 2..4 from refault/eviction thrash | approximate |
-| per-generation LRU lists | `lru_gen` lists | no lists; side tables and scan-count policy | absent as structure |
+| per-generation LRU lists | `lru_gen` lists | module sorts the kernel's inactive lists into 4 age buckets, oldest-first, under `lru_lock`; no `lru_gen` structures | approximate (real list order) |
 | folio paths | multi-order folios | head-page normalization; probes receive head pages | partial |
 | text patch / SMP safety | n/a | `aarch64_insn_patch_text` (stop_machine), restore | **exact** |
 | custom `shrink_lruvec` (vmscan entry) | source rebuild | `vmscan_hook`: module function replaces `shrink_lruvec`, calls kernel `shrink_active_list`/`shrink_inactive_list` | **exact entry point**, approximate loop |
@@ -44,9 +44,10 @@ as structure** — the data structure is not replaced (side table instead).
 ## Gap list (explicit)
 
 1. **No `lru_gen` lists.** The list *structures* are not replaced; the runtime
-   uses side tables plus a custom `shrink_lruvec` (`vmscan_hook`) that calls the
-   kernel's own list scanners. Per-generation lists can live in module memory
-   and drive the scan choices without touching `lru_gen`.
+   uses side tables plus a custom `shrink_lruvec` (`vmscan_hook`) that sorts the
+   kernel's own inactive lists into age buckets (oldest-first) and calls the
+   kernel scanners. The ordering is MGLRU-like; the storage is still the
+   kernel's lists, not `lru_gen`.
 2. **Clock semantics.** The epoch advances per memcg scan (vendor tracepoint),
    not at the exact MGLRU point where a generation is created. This changes
    generation boundaries, not the decision direction.

@@ -37,7 +37,7 @@
 - **Ничего не утверждается без лога.** Каждый модуль поставляется с QEMU-гейтом,
   который произвёл его числа; неизмеренная стадия помечена как *planned* и
   никогда — как «сделано».
-- **Хеши воспроизводимы.** `vmscan_hook.ko` 1.1.0 собран дважды из одного
+- **Хеши воспроизводимы.** `vmscan_hook.ko` 1.2.0 собран дважды из одного
   профиля и дал один sha256 — пин в `versions.json` это и есть та байтовая
   строка, а не копия скроллбека терминала.
 - **Документация под машинной проверкой.** `tools/check_versions.py` падает на
@@ -177,7 +177,7 @@ CFI-мост — самая интересная часть. `__cfi_check` не�
 | [`kpatch`](modules/kpatch/) | 1.0.2 | probe | save → `aarch64_insn_patch_text_nosync` → проверка → restore | `getpid 114 → 0 → 118` · `c4f9a319…` |
 | [`ktramp`](modules/ktramp/) | 1.3.0 | экспериментальный | Stage G M5: адаптивный ttl 2..4, ветки возраста 8/9, часы scan-эпох | ветка 8 `a80`, ветка 9 `a10` 51.1%, `y80` 51.0%, `t5` 100%, `tdist=848` · `e688ddc3…` |
 | [`mglru_probe`](modules/mglru/) | 1.0.6 | экспериментальный | kprobe на reclaim path + реальная политика `scan_control.priority` (0x2b), чистый rmmod | `changed=11/11`, `gt0=11`, `pgscan=6071/2464` · `754d20b9…` |
-| [`vmscan_hook`](modules/vmscan_hook/) | 1.1.0 | экспериментальный | кастомный `shrink_lruvec` через патч текста модулем; штатные сканеры списков; молодые страницы ротируются, а не теряются | `calls=114`, `scans=20589`, `moved=8323`, `ttl_ms=20000` · `9801942b…` |
+| [`vmscan_hook`](modules/vmscan_hook/) | 1.2.0 | экспериментальный | кастомный `shrink_lruvec` + поколенческая сортировка inactive-списков (oldest-first) | `calls=89`, `scans=19583`, `moved=8.9M`, `buckets=5743/865/0/8.9M`, `pgscan=9045` · `996ec6fd…` |
 
 Смысл проекта — именно библиотека: каждый модуль собирается из этого дерева
 одним builder'ом, проходит QEMU-гейт и поставляется вместе со своим evidence.
@@ -256,7 +256,7 @@ tools/adapt_kernel.sh --profile profiles/my-device/profile.env --qemu
 | `kpatch.ko` | `c4f9a319feb6da9d8989bbdb15903bcb6ccce4c361c1fcd1edfc237dfe5ddf11` | `tests/qemu_probe_gate.sh` |
 | `ktramp.ko` | `e688ddc30758321a8bc6fb5110529c13af8ee8adc363d70829cef064007fddc2` | `tests/qemu_ktramp_gate.sh` |
 | `mglru_probe.ko` | `754d20b990bcd022e8766cbe79676eec847dcdfe50e05f99af660dcddf940ea4` | `tests/qemu_mglru_gate.sh` |
-| `vmscan_hook.ko` | `9801942be55f90642b26e802bd9e241170340486f72e1e9e35f58ea441f065cd` | `tests/qemu_vmscan_hook_gate.sh` |
+| `vmscan_hook.ko` | `996ec6fde754bed693fe1818db9f6d4131594808212e071be743b69dd99410dc` | `tests/qemu_vmscan_hook_gate.sh` |
 
 Измерено в QEMU на точном стоковом `Image` (`-smp 1`, `maxcpus=1`):
 
@@ -331,6 +331,8 @@ QEMU и явным списком пробелов; дельта 5.10 → 7.4 и
 | [v1.2.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.2.0) | MGLRU Stage F (M4 subset): per-memcg часы scan-эпох `seq`/`win`, порог refault по окну, 31/31 unit-тестов |
 | [v1.3.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.3.0) | MGLRU Stage G (M5): адаптивный ttl, ветки возраста 8/9, `vmscan_hook` кастомный `shrink_lruvec`, parity-report, 38/38 unit-тестов |
 | [v1.4.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.4.0) | stack-гейт: политика `ktramp` + кастомный `shrink_lruvec` `vmscan_hook` компонуются под реальным reclaim (`calls=112`, `scans=8579`, `pgscan=8210`), restore/unload чистые |
+| [v1.5.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.5.0) | `vmscan_hook` ротация молодых страниц (`moved=8323`, `ttl_ms=20000`) |
+| [v1.6.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.6.0) | Stage H: поколенческая сортировка inactive-списков (oldest-first), `buckets=5743/865/0/8.9M`, `pgscan=9045` |
 | [v1.5.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.5.0) | `vmscan_hook` 1.1.0: ротация молодых страниц (`moved`, `ttl_ms`), воспроизводимый `.ko`, переработанная шапка, пять новых инфографик, гейт расширен на `module.prop` в `dist/` |
 
 ## Документация

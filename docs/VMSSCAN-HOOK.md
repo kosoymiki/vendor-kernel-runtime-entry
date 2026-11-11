@@ -62,7 +62,7 @@ rotation window (default `50` ms). Read back `hooked`, `calls`, `scans`,
 
 ## Observed in QEMU (stock `Image`, 512 MiB, swapless)
 
-`tests/qemu_vmscan_hook_gate.sh`, module sha `9801942b…` (built twice from the
+`tests/qemu_vmscan_hook_gate.sh`, module sha `996ec6fd…` (built twice from the
 same profile, one byte string both times):
 
 ```
@@ -111,6 +111,28 @@ vh_off=0 kt_off=0 vh_rm=0 kt_rm=0 vh_gone kt_gone vh_mod_gone kt_mod_gone
 policy-written scan target; `moved=5175` shows rotation still runs while the
 trampoline policy is active. Both modules restore, both unload, both `/proc`
 surfaces disappear.
+
+## Stage H — generation-bucket sort of the inactive lists
+
+`rotate_young` now sorts instead of only rotating: under `pgdat->lru_lock` it
+walks `LRU_INACTIVE_ANON` and `LRU_INACTIVE_FILE`, buckets every page by age
+(`<1 ttl`, `<2 ttl`, `<4 ttl`, `>=4 ttl` / never accessed), and rebuilds each
+list oldest-first. The kernel scanner takes from the head, so the oldest
+generation is evicted first — MGLRU's ordering on the real lists, without
+`lru_gen` structures.
+
+QEMU (`tests/qemu_vmscan_hook_gate.sh`, module sha `996ec6fd…`):
+
+```
+poll=18 pgscan=9045
+vmscan_hook ... hooked=1 calls=89 scans=19583 moved=8908715
+              buckets=5743,865,0,8902107 ttl_ms=20000
+restore_rc=0 ... rmmod_rc=0 proc_gone module_gone
+```
+
+`moved` is large because the sort runs on every `shrink_lruvec` call; the
+bucket split shows the hot pages (5743+865) at the tail and old/never-accessed
+pages (8902107) at the head.
 
 ## Limits (honest)
 

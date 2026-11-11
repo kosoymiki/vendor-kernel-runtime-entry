@@ -23,7 +23,7 @@ structure** — структура не заменяется (side table вме�
 | refault distance | shadow timestamp против `nonresident_age` | идентично: `shadow >> 19`, `lruvec+96`, 46-битная маска | **exact** |
 | порог refault | сравнение с `max_seq - min_seq` | `32 * window`, окно масштабируется адаптивным ttl | approximate |
 | адаптивный `min_ttl` | `min_ttl_ms` в миллисекундах | ttl 2..4 из отношения refault/eviction | approximate |
-| per-generation LRU-списки | списки `lru_gen` | списков нет; side table и политика scan-count | absent as structure |
+| per-generation LRU-списки | списки `lru_gen` | модуль сортирует inactive-списки ядра в 4 возрастных bucket'а, oldest-first, под `lru_lock`; структур `lru_gen` нет | approximate (реальный порядок списков) |
 | folio-пути | multi-order folios | нормализация head-страниц; probe получают head | partial |
 | патч текста / SMP | n/a | `aarch64_insn_patch_text` (stop_machine), restore | **exact** |
 | кастомный `shrink_lruvec` (вход vmscan) | пересборка исходников | `vmscan_hook`: функция модуля заменяет `shrink_lruvec`, вызывает штатные `shrink_active_list`/`shrink_inactive_list` | **exact entry point**, приблизительный цикл |
@@ -45,8 +45,9 @@ structure** — структура не заменяется (side table вме�
 
 1. **Нет `lru_gen`-списков.** Сами структуры списков не заменяются; runtime
    использует side table плюс кастомный `shrink_lruvec` (`vmscan_hook`),
-   который вызывает штатные сканеры списков. Per-generation списки могут жить
-   в памяти модуля и управлять выбором сканирования без `lru_gen`.
+   который сортирует inactive-списки ядра в возрастные bucket'ы (oldest-first)
+   и вызывает штатные сканеры. Порядок MGLRU-подобный; хранилище — по-прежнему
+   списки ядра, а не `lru_gen`.
 2. **Семантика часов.** Эпоха двигается на скан memcg (vendor-tracepoint), а не
    в точной точке создания поколения MGLRU. Это меняет границы поколений, но
    не направление решения.
