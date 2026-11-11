@@ -142,8 +142,9 @@ CFI-мост — самая интересная часть. `__cfi_check` не�
 |---|---|---|---|---|
 | [`kbootstrap`](kernel/) | 1.0.0 | stable probe | CFI-мост, резолв kallsyms, raw payload, `/proc` | `payload_result=42` · `065f520b…` |
 | [`kpatch`](modules/kpatch/) | 1.0.2 | probe | save → `aarch64_insn_patch_text_nosync` → проверка → restore | `getpid 114 → 0 → 118` · `c4f9a319…` |
-| [`ktramp`](modules/ktramp/) | 1.2.0 | экспериментальный | Stage F M4 subset: per-memcg часы scan-эпох (`seq`/`win`), young/cold, порог refault по окну | `seq=125`, `win=2`, ветка 7 cold, `y80` 50.6%, `t5` 100%, `tdist=847` · `34bf93d0…` |
-| [`mglru_probe`](modules/mglru/) | 1.0.5 | экспериментальный | kprobe на reclaim path + политика приоритета `shrink_node`, чистый rmmod | `changed=55/84`, `gt0=55` · `9a142d8b…` |
+| [`ktramp`](modules/ktramp/) | 1.3.0 | экспериментальный | Stage G M5: адаптивный ttl 2..4, ветки возраста 8/9, часы scan-эпох | ветка 8 `a80`, ветка 9 `a10` 51.1%, `y80` 51.0%, `t5` 100%, `tdist=848` · `e688ddc3…` |
+| [`mglru_probe`](modules/mglru/) | 1.0.6 | экспериментальный | kprobe на reclaim path + реальная политика `scan_control.priority` (0x2b), чистый rmmod | `changed=11/11`, `gt0=11`, `pgscan=6071/2464` · `754d20b9…` |
+| [`vmscan_hook`](modules/vmscan_hook/) | 1.0.0 | экспериментальный | кастомный `shrink_lruvec` через патч текста модулем; штатные сканеры списков | `calls=34`, `scans=8209`, `pgscan=8196`, restore/unload · `3fb1610c…` |
 
 Смысл проекта — именно библиотека: каждый модуль собирается из этого дерева
 одним builder'ом, проходит QEMU-гейт и поставляется вместе со своим evidence.
@@ -211,8 +212,9 @@ tools/adapt_kernel.sh --profile profiles/my-device/profile.env --qemu
 |---|---|---|
 | `kbootstrap.ko` | `065f520b1b562f55eef48a138a12d4df3c18d51357bcbacb39b46d1e9a33c593` | `tests/qemu_payload_gate.sh` |
 | `kpatch.ko` | `c4f9a319feb6da9d8989bbdb15903bcb6ccce4c361c1fcd1edfc237dfe5ddf11` | `tests/qemu_probe_gate.sh` |
-| `ktramp.ko` | `34bf93d01b2a37b88509f7cdeb316a245c705afc6de0cfe92d48fb6be2f21100` | `tests/qemu_ktramp_gate.sh` |
-| `mglru_probe.ko` | `9a142d8b04c03a343839d38a935ad84c06f8e6e76f629d4d39fbf8a11dd53d35` | `tests/qemu_mglru_gate.sh` |
+| `ktramp.ko` | `e688ddc30758321a8bc6fb5110529c13af8ee8adc363d70829cef064007fddc2` | `tests/qemu_ktramp_gate.sh` |
+| `mglru_probe.ko` | `754d20b990bcd022e8766cbe79676eec847dcdfe50e05f99af660dcddf940ea4` | `tests/qemu_mglru_gate.sh` |
+| `vmscan_hook.ko` | `3fb1610cc191b1b5b840aac4140a9c021ac4174d6d5f4eb1f45e5f3c1f7371c9` | `tests/qemu_vmscan_hook_gate.sh` |
 
 Измерено в QEMU на точном стоковом `Image` (`-smp 1`, `maxcpus=1`):
 
@@ -221,11 +223,14 @@ tools/adapt_kernel.sh --profile profiles/my-device/profile.env --qemu
   `init_module+0x1c/0xfe8 [kbootstrap]` — `init_module` действительно выполнился.
 - **text patch:** первые инструкции `__arm64_sys_getpid` сохранены, записан
   `mov w0,#0; ret`, `getpid` вернул `0`, после restore — `118`.
-- **трамплин (Stage F):** вход `get_scan_count` заменён ветвлением в обёртку
-  модуля; per-memcg часы scan-эпох `seq=125`, `win=2`; холодный кэш — ветка 7
-  (полный скан), форс young `y80` — ветка 6 (`delta20=591/1167` = 50.6%),
-  форс distance `t5` — ветка 1 (100%), реальный refault — ветка 2
-  (`tdist=847`); `patched=0`, `rmmod_rc=0`, `proc_gone`, `module_gone`.
+- **трамплин (Stage G):** вход `get_scan_count` заменён ветвлением в обёртку
+  модуля; часы scan-эпох `seq=123`, `ttl=2`; холодный кэш — ветка 7 (полный
+  скан), форс young `y80` — ветка 6 (51.0%), форс distance `t5` — ветка 1
+  (100%), форс старых/молодых вытеснений — ветки 8/9 (51.1%), реальный refault
+  — ветка 2 (`tdist=848`); restore и unload чистые.
+- **кастомный vmscan:** `vmscan_hook` заменяет `shrink_lruvec` функцией модуля,
+  которая вызывает штатные `shrink_active_list`/`shrink_inactive_list`;
+  `calls=34`, `scans=8209`, `pgscan_file=8196`, restore + unload чистые.
 - **reclaim-probes:** baseline `get_scan_count=54`, `pgscan_file=1428`; mode 5
   `get_scan_count=84`, `pgscan_file=4478`, `changed=55/phits=84`
   (`gt0=55`, `zero=84`). Накопленные суммы несравнимы между прогонами —
@@ -249,7 +254,7 @@ tools/adapt_kernel.sh --profile profiles/my-device/profile.env --qemu
 | M2 трамплин | **готово** | замена функции целиком |
 | M3 policy hooks | **готово** | Stage E поколенческая политика, shadow refault distance, SMP-safe патчинг, restore/unload |
 | M4 бэкпорт 7.4 | **готово** | Stage F: per-memcg часы scan-эпох (`seq`/`win`), порог refault по окну, young/cold по эпохе |
-| M5 parity | план | бенчмарки, gap-report, parity-subset |
+| M5 parity | **готово** | адаптивный ttl, ветки возраста, вход кастомного `shrink_lruvec`, gap-report точности |
 
 Probe — это не бэкпорт. M3/M4 закрыты с поведенческим evidence и явным gap-list;
 QEMU и явным списком пробелов; дельта 5.10 → 7.4 измерена в
@@ -266,6 +271,7 @@ QEMU и явным списком пробелов; дельта 5.10 → 7.4 и
 | [v1.0.4](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.4) | `mglru_probe` mode 5 (политика приоритета), A/B reclaim-гейт, измеренные числа стадии |
 | [v1.1.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.1.0) | MGLRU Stage E: поколенческая young/cold-политика, shadow refault distance, `delta/pre`-гейт, restore/unload, `mglru_probe` 1.0.5 |
 | [v1.2.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.2.0) | MGLRU Stage F (M4 subset): per-memcg часы scan-эпох `seq`/`win`, порог refault по окну, 31/31 unit-тестов |
+| [v1.3.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.3.0) | MGLRU Stage G (M5): адаптивный ttl, ветки возраста 8/9, `vmscan_hook` кастомный `shrink_lruvec`, parity-report, 38/38 unit-тестов |
 
 ## Документация
 

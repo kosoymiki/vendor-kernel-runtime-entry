@@ -1,4 +1,4 @@
-# MGLRU probe: статус Stage A/B/E/F (экспериментально)
+# MGLRU probe: статус Stage A/B/E/F/G (экспериментально)
 
 `modules/mglru` — **probe**, не полный backport 7.4 MGLRU. Он измеряет reclaim
 path 5.10 и проверяет generation-aware политики через доказанный entry.
@@ -24,10 +24,14 @@ path 5.10 и проверяет generation-aware политики через д�
   vendor-tracepoint (`seq`, `window=min(seq,2)`), порог refault по окну
   (`32*window`), young/cold по эпохе. Детали:
   [`MGLRU-STAGE-F.ru.md`](MGLRU-STAGE-F.ru.md).
+- **Stage G (M5, `ktramp` 1.3.0):** адаптивный ttl 2..4 из отношения
+  refault/eviction, 4-bucket гистограмма возраста вытеснений, ветки 8/9
+  (старые вытеснения → полный скан, молодые → защита). Детали:
+  [`MGLRU-STAGE-G.ru.md`](MGLRU-STAGE-G.ru.md).
 - kprobe на `mark_page_accessed` заполняет side table поколений (1024 записи).
 
 Mode 5 берёт `scan_control` из `regs[1]` и пишет поле `s8 priority` по оффсету
-`0x2c` (оффсет проверен по ABI цели, см. `docs/OFFSETS.md` соседней сессии).
+`0x2b` (проверен scprobe в QEMU: 12->11->10 по 0x2b, см. `docs/OFFSETS.md` соседней сессии).
 Считаются все входы (`phits`) и только те записи, что реально изменили значение
 (`changed`).
 
@@ -79,8 +83,9 @@ Return-handler не срабатывал (`modified=0`, `nmissed=0`): kprobe н�
   [`MGLRU-STAGE-E.ru.md`](MGLRU-STAGE-E.ru.md).
 - **M4 (сделан как Stage F):** per-memcg часы scan-эпох, порог refault по
   окну, young/cold по эпохе. См. [`MGLRU-STAGE-F.ru.md`](MGLRU-STAGE-F.ru.md).
-- **M5 (дальше):** полный parity-report: адаптивный `min_ttl`,
-  per-generation LRU-списки, folio-пути и явный gap-list точности.
+- **M5 (сделан как Stage G):** адаптивный ttl, ветки возраста, вход
+  кастомного `shrink_lruvec` (`vmscan_hook`), gap-report точности
+  ([`MGLRU-PARITY.ru.md`](MGLRU-PARITY.ru.md)).
 
 ## Как правильно измерять reclaim
 

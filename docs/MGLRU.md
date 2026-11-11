@@ -1,4 +1,4 @@
-# MGLRU probe: Stage A/B/E/F status (experimental)
+# MGLRU probe: Stage A/B/E/F/G status (experimental)
 
 `modules/mglru` is a **probe**, not a full 7.4 MGLRU backport. It exists to
 measure the 5.10 reclaim path and to test generation-aware policies through the
@@ -25,10 +25,14 @@ proven entry.
   vendor tracepoint (`seq`, `window=min(seq,2)`), window-scaled refault
   threshold (`32*window`), young/cold classification by epoch. Details:
   [`MGLRU-STAGE-F.md`](MGLRU-STAGE-F.md).
+- **Stage G (M5, `ktramp` 1.3.0):** adaptive ttl 2..4 from the
+  refault/eviction ratio, 4-bucket eviction-age histogram, policy branches 8/9
+  (old evictions -> full scan, young evictions -> protect). Details:
+  [`MGLRU-STAGE-G.md`](MGLRU-STAGE-G.md).
 - `mark_page_accessed` kprobe feeds a 1024-entry page-generation side table.
 
 Mode 5 reads `scan_control` from `regs[1]` and writes the `s8 priority` field at
-offset `0x2c` (verified against the target ABI, see the neighbouring session's
+offset `0x2b` (verified against the target ABI, see the neighbouring session's
 `docs/OFFSETS.md`). It counts every entry (`phits`) and every write that
 actually changed the value (`changed`).
 
@@ -82,8 +86,9 @@ not comparable across runs; only a fixed-endpoint measurement can settle it.
 - **M4 (landed as Stage F):** per-memcg scan-epoch clock, window-scaled
   refault threshold, young/cold by epoch. See
   [`MGLRU-STAGE-F.md`](MGLRU-STAGE-F.md).
-- **M5 (next):** full parity report: adaptive `min_ttl`, per-generation LRU
-  lists, folio paths, and the explicit fidelity gap list.
+- **M5 (landed as Stage G):** adaptive ttl, eviction-age branches, custom
+  `shrink_lruvec` entry (`vmscan_hook`), fidelity gap report
+  ([`MGLRU-PARITY.md`](MGLRU-PARITY.md)).
 
 ## Measuring reclaim correctly
 

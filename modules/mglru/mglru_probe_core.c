@@ -88,7 +88,7 @@ static int h0(struct kprobe *p, struct pt_regs *r)
 	(void)p;
 	hits[0]++;
 	if ((policy_mode == 4 || policy_mode == 5) && r->regs[1]) {
-		prio = (s8 *)((char *)r->regs[1] + 0x2c); /* sc->priority */
+		prio = (s8 *)((char *)r->regs[1] + 0x2b); /* sc->priority (verified by scprobe: 12->11->10 at 0x2b) */
 		old = *prio;
 		if (old > 0) prio_gt0++;
 		if (policy_mode == 5)

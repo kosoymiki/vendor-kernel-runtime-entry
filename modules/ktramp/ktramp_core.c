@@ -49,8 +49,10 @@ static int ak_reg;
 #define MGN 256
 static unsigned long mgkey[MGN], mggen[MGN], mgref[MGN], mgscan[MGN];
 static unsigned long mgseq[MGN], mgwin[MGN];   /* per-memcg scan-epoch clock */
-static unsigned long last_seq, last_win;
-static unsigned long mgattr_exact, mgattr_fb, folio_heads, dist_hist[4], branch_hist[8];
+static unsigned long mgev[MGN], mgttl[MGN], ev_age[MGN][4]; /* thrash + eviction age */
+static unsigned long last_seq, last_win, last_ttl;
+static int last_mgi = -1;
+static unsigned long mgattr_exact, mgattr_fb, folio_heads, dist_hist[4], branch_hist[10];
 static unsigned long snap_sum, snap_pol, snap_sum2, snap_pol2; /* fixed endpoints: calls 1..20 and 1..40 */
 static void *cur_memcg;
 static unsigned long tp_seq, last_tp_seq, last_kref;
@@ -61,6 +63,7 @@ static unsigned long sum_anon, sum_file, sa20, sf20, sa40, sf40;
 static unsigned long pre_total, pol_delta, pre20, d20, pre40, d40;
 static unsigned long force_d;   /* fault injection: force refault distance */
 static unsigned long force_young, force_cold; /* fault injection: force young/cold split */
+static unsigned long force_ao, force_aa;     /* fault injection: force age split */
 static unsigned long ev_hits, last_reuse_dist, last_ev, last_nonres, last_true_dist;
 static unsigned long lvmemcg[LVN];
 static tpreg_fn tp_reg; static tpunreg_fn tp_unreg; static void *tp_ptr; static int tp_attached;
@@ -174,6 +177,12 @@ static int ev_handler(struct kprobe *p, struct pt_regs *r)
 		mg_touch(memcg,0);
 		mgi=mg_find(memcg);
 		cur=(mgi>=0 && *(mgseq+mgi)) ? *(mgseq+mgi) : cur_gen;
+		if(mgi>=0){
+			unsigned long a = (eg && cur) ? (cur - eg) : 99;
+			int b = a==0 ? 0 : a==1 ? 1 : a==2 ? 2 : 3;
+			(*(mgev+mgi))++;
+			(*(ev_age[mgi]+b))++;
+		}
 		mi=lv_for_memcg(memcg);
 		if(mi<0) mi=cur_lv;
 		if(mi>=0){
@@ -213,6 +222,8 @@ static void wrap(void *lv, void *sc, void *nr)
 			if (mi >= 0) {
 				last_seq = *(mgseq + mi);
 				last_win = *(mgwin + mi) ? *(mgwin + mi) : 1;
+				last_ttl = *(mgttl + mi) ? *(mgttl + mi) : 2;
+				last_mgi = mi;
 				gen = (int)((last_seq ? last_seq : *(mggen + mi)) & 1);
 				if ((++(*(mgscan + mi)) & 63) == 0)
 					(*(mggen + mi))++;
@@ -227,9 +238,15 @@ static void wrap(void *lv, void *sc, void *nr)
 			int can_swap = nr_swap_pages_p ? (*nr_swap_pages_p > 0) : 0;
 			unsigned long y = (cur_lv >= 0) ? *(lvyoung + cur_lv) : 0;
 			unsigned long c = (cur_lv >= 0) ? *(lvcold + cur_lv) : 0;
+			unsigned long ao = 0, aa = 0;
 			if (force_young || force_cold) { y = force_young; c = force_cold; }
-			kt_policy_nr(n, d, 32UL * last_win, gen, can_swap, y, c, &branch);
-			if (branch > 0 && branch < 8)
+			if (mi >= 0) {
+				ao = *(ev_age[mi]+2) + *(ev_age[mi]+3);
+				aa = *(ev_age[mi]+0) + *(ev_age[mi]+1) + ao;
+			}
+			if (force_aa) { ao = force_ao; aa = force_aa; }
+			kt_policy_nr(n, d, 32UL * last_ttl, gen, can_swap, y, c, ao, aa, &branch);
+			if (branch > 0 && branch < 10)
 				branch_hist[branch]++;
 		}
 		pre_total += pre;
@@ -323,6 +340,8 @@ static void tp_memcg_probe(void *data, void *memcg, bool *skip)
 	if (mi >= 0) {
 		(*(mgseq + mi))++;
 		(*(mgwin + mi)) = (*(mgseq + mi)) > 2 ? 2 : (*(mgseq + mi));
+		*(mgttl + mi) = kt_ttl_step(*(mgev + mi), *(mgref + mi),
+					    *(mgttl + mi));
 	}
 }
 
@@ -407,14 +426,15 @@ static ssize_t k_read(struct file*f,char __user*buf,size_t len,loff_t*off)
 		n=0; for(i=0;i<MGN;i++) if(*(mgkey+i)) n++;
 		put(" mg=");putdec(n);
 		put(" mgattr=");putdec((long)mgattr_exact);put("/");putdec((long)mgattr_fb);
-		put(" seq=");putdec((long)last_seq);put(" win=");putdec((long)last_win);
+		put(" seq=");putdec((long)last_seq);put(" win=");putdec((long)last_win);put(" ttl=");putdec((long)last_ttl);
+		{int ai;put(" age=");for(ai=0;ai<4;ai++){if(ai)put(",");putdec((long)(last_mgi>=0?*(ev_age[last_mgi]+ai):0));}}
 		put(" folio=");putdec((long)folio_heads);
 		put(" dist_hist=");putdec((long)dist_hist[0]);put(",");putdec((long)dist_hist[1]);put(",");putdec((long)dist_hist[2]);put(",");putdec((long)dist_hist[3]);
-		put(" branch=");putdec((long)branch_hist[1]);put(",");putdec((long)branch_hist[2]);put(",");putdec((long)branch_hist[3]);put(",");putdec((long)branch_hist[4]);put(",");putdec((long)branch_hist[5]);put(",");putdec((long)branch_hist[6]);put(",");putdec((long)branch_hist[7]);
+		put(" branch=");putdec((long)branch_hist[1]);put(",");putdec((long)branch_hist[2]);put(",");putdec((long)branch_hist[3]);put(",");putdec((long)branch_hist[4]);put(",");putdec((long)branch_hist[5]);put(",");putdec((long)branch_hist[6]);put(",");putdec((long)branch_hist[7]);put(",");putdec((long)branch_hist[8]);put(",");putdec((long)branch_hist[9]);
 		put(" acc=");putdec((long)accesses);put(" yc=");putdec((long)y20);put("/");putdec((long)c20);put(" yc40=");putdec((long)y40);put("/");putdec((long)c40);
 		put(" af20=");putdec((long)sa20);put("/");putdec((long)sf20);put(" af40=");putdec((long)sa40);put("/");putdec((long)sf40);put(" swap=");putdec(nr_swap_pages_p?(*nr_swap_pages_p):-1);
 		put(" pre20=");putdec((long)pre20);put(" delta20=");putdec((long)d20);put(" pre40=");putdec((long)pre40);put(" delta40=");putdec((long)d40);
-		put(" fd=");putdec((long)force_d);put(" fyc=");putdec((long)force_young);put("/");putdec((long)force_cold);put(" ev=");putdec((long)last_ev);put(" nonres=");putdec((long)last_nonres);put(" tdist=");putdec((long)last_true_dist);put(" evhits=");putdec((long)ev_hits);put(" reuse=");putdec((long)last_reuse_dist);
+		put(" fd=");putdec((long)force_d);put(" fyc=");putdec((long)force_young);put("/");putdec((long)force_cold);put(" fa=");putdec((long)force_ao);put("/");putdec((long)force_aa);put(" ev=");putdec((long)last_ev);put(" nonres=");putdec((long)last_nonres);put(" tdist=");putdec((long)last_true_dist);put(" evhits=");putdec((long)ev_hits);put(" reuse=");putdec((long)last_reuse_dist);
 	}
 	put("\n");
 	put("off: page.flags=");putdec((long)offsetof(struct page, flags));
@@ -431,7 +451,8 @@ static ssize_t k_write(struct file*f,const char __user*ubuf,size_t len,loff_t*pp
 	char tmp[8];long n;int rc;(void)f;
 	if(!k_swb)return -EIO;
 	n=k_swb(tmp,sizeof(tmp)-1,ppos,ubuf,len);if(n<0)return n;tmp[n]=0;
-	if (tmp[0] == 'y') { char *q=tmp+1; force_young=0; while(*q>='0'&&*q<='9') force_young=force_young*10+(unsigned long)(*q++-'0'); if(force_young>100) force_young=100; force_cold=100-force_young; policy_on=1; rc=patch_on(); if(!rc) tp_attach(); }
+	if (tmp[0] == 'a') { char *q=tmp+1; force_ao=0; while(*q>='0'&&*q<='9') force_ao=force_ao*10+(unsigned long)(*q++-'0'); if(force_ao>100) force_ao=100; force_aa=100; force_young=40; force_cold=60; policy_on=1; rc=patch_on(); if(!rc) tp_attach(); }
+	else if (tmp[0] == 'y') { char *q=tmp+1; force_young=0; while(*q>='0'&&*q<='9') force_young=force_young*10+(unsigned long)(*q++-'0'); if(force_young>100) force_young=100; force_cold=100-force_young; policy_on=1; rc=patch_on(); if(!rc) tp_attach(); }
 	else if (tmp[0] == 't') { char *q=tmp+1; force_d=0; while(*q>='0'&&*q<='9') force_d=force_d*10+(unsigned long)(*q++-'0'); policy_on=1; rc=patch_on(); if(!rc) tp_attach(); }
 	else if (tmp[0] == '2') { policy_on = 1; rc = patch_on(); if (!rc) tp_attach(); }
 	else if (tmp[0] == '1') { tp_detach(); policy_on = 0; rc = patch_on(); }

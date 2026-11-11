@@ -61,11 +61,12 @@ lets the wrapper call the trampoline — so the original code still runs while t
 module observes and can adjust `nr[]`.
 
 Measured under **real reclaim** (ext4 file through `loop0` + 345 MiB anonymous
-pressure, see `docs/MEASURING-RECLAIM.md`), Stage F gate: cold cache
-`seq=125`, `win=2`, branch 7 (123 full-scan decisions); forced young `y80`
-branch 6, `delta20=591/1167` = 50.6%; forced distance `t5` branch 1, 100%;
-real refault branch 2, `tdist=847`; then `patched=0`, `rmmod_rc=0`,
-`proc_gone`, `module_gone`.
+pressure, see `docs/MEASURING-RECLAIM.md`), Stage G gate: cold cache
+`seq=123`, `ttl=2`, branch 7 (121 full-scan decisions); forced young `y80`
+branch 6, 51.0%; forced distance `t5` branch 1, 100%; forced old/young
+evictions branches 8/9 (51.1%); real refault branch 2, `tdist=848`; then
+`patched=0`, `rmmod_rc=0`, `proc_gone`, `module_gone`. `vmscan_hook` adds a
+custom `shrink_lruvec` (`calls=34`, `scans=8209`, `pgscan=8196`).
 
 Limits:
 
@@ -87,6 +88,7 @@ The three base modules are the compatibility layer, not just probes:
 | `kbootstrap` | vendor CFI runtime, kallsyms resolution, vermagic/MODVERSIONS, `this_module` init/exit relocations |
 | `kpatch` | replace any reachable function body, verify, restore; SMP via `aarch64_insn_patch_text` |
 | `ktramp` | full-function trampoline that still calls the original, with a policy hook on `nr[]` |
+| `vmscan_hook` | replaces `shrink_lruvec` with a module function that calls the kernel list scanners (custom reclaim path) |
 
 vmscan entry points are reachable without rebuilding it: kprobes observe
 `shrink_node`, `shrink_node_memcgs`, `get_scan_count`, `page_referenced`,

@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="480" viewBox="0 0 1280 480" role="img" aria-labelledby="t d">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="520" viewBox="0 0 1280 520" role="img" aria-labelledby="t d">
 <title id="t">Module library</title>
 <desc id="d">Versioned modules shipped by this repository.</desc>
 <defs>
@@ -26,49 +26,57 @@
     <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000" flood-opacity="0.35"/>
   </filter>
 </defs>
-<rect width="1280" height="480" fill="url(#bg)"/>
-<rect width="1280" height="480" fill="url(#grid)" opacity="0.35"/>
+<rect width="1280" height="520" fill="url(#bg)"/>
+<rect width="1280" height="520" fill="url(#grid)" opacity="0.35"/>
 <circle cx="153" cy="0" r="409" fill="url(#glowc)"/>
-<circle cx="1177" cy="480" r="358" fill="url(#glowv)"/>
+<circle cx="1177" cy="520" r="358" fill="url(#glowv)"/>
 <text x="64" y="62" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12" fill="#22d3ee" font-weight="700" letter-spacing="3">MODULE LIBRARY</text>
-<text x="64" y="100" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="28" fill="#e8eefb" font-weight="800">Four modules, one entry, growing</text>
+<text x="64" y="100" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="28" fill="#e8eefb" font-weight="800">Five modules, one entry, growing</text>
 <text x="64" y="128" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" fill="#8fa3bf" font-weight="400">Every module is built from this tree by tools/adapt_kernel.sh and gated in QEMU.</text>
-<rect x="64" y="170" width="272" height="230" rx="16" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
-<rect x="64" y="170" width="272" height="4" rx="2" fill="#34d399"/>
-<text x="86" y="210" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="17" fill="#e8eefb" font-weight="700">kbootstrap</text>
-<text x="86" y="232" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11.5" fill="#34d399" font-weight="600">v1.0.0</text>
-<rect x="214" y="214" width="84" height="19" rx="9.5" fill="#34d399" fill-opacity="0.12" stroke="#34d399" stroke-opacity="0.45"/>
-<text x="222" y="226.92" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="9.5" fill="#34d399" font-weight="600">stable probe</text>
-<text x="86" y="268" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">CFI bridge, kallsyms</text>
-<text x="86" y="288" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">resolution, raw payload</text>
-<text x="86" y="308" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">execution, /proc surface.</text>
-<rect x="360" y="170" width="272" height="230" rx="16" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
-<rect x="360" y="170" width="272" height="4" rx="2" fill="#34d399"/>
-<text x="382" y="210" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="17" fill="#e8eefb" font-weight="700">kpatch</text>
-<text x="382" y="232" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11.5" fill="#34d399" font-weight="600">v1.0.2</text>
-<rect x="510" y="214" width="44" height="19" rx="9.5" fill="#34d399" fill-opacity="0.12" stroke="#34d399" stroke-opacity="0.45"/>
-<text x="518" y="226.92" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="9.5" fill="#34d399" font-weight="600">probe</text>
-<text x="382" y="268" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">Live text patch with</text>
-<text x="382" y="288" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">save + verify + restore</text>
-<text x="382" y="308" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">of a syscall body.</text>
-<rect x="656" y="170" width="272" height="230" rx="16" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
-<rect x="656" y="170" width="272" height="4" rx="2" fill="#fbbf24"/>
-<text x="678" y="210" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="17" fill="#e8eefb" font-weight="700">ktramp</text>
-<text x="678" y="232" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11.5" fill="#fbbf24" font-weight="600">v1.2.0</text>
-<rect x="806" y="214" width="84" height="19" rx="9.5" fill="#fbbf24" fill-opacity="0.12" stroke="#fbbf24" stroke-opacity="0.45"/>
-<text x="814" y="226.92" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="9.5" fill="#fbbf24" font-weight="600">experimental</text>
-<text x="678" y="268" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">Copied-prologue</text>
-<text x="678" y="288" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">trampoline replaces a</text>
-<text x="678" y="308" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">whole function body.</text>
-<rect x="952" y="170" width="272" height="230" rx="16" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
-<rect x="952" y="170" width="272" height="4" rx="2" fill="#fbbf24"/>
-<text x="974" y="210" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="17" fill="#e8eefb" font-weight="700">mglru_probe</text>
-<text x="974" y="232" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11.5" fill="#fbbf24" font-weight="600">v1.0.5</text>
-<rect x="1102" y="214" width="84" height="19" rx="9.5" fill="#fbbf24" fill-opacity="0.12" stroke="#fbbf24" stroke-opacity="0.45"/>
-<text x="1110" y="226.92" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="9.5" fill="#fbbf24" font-weight="600">experimental</text>
-<text x="974" y="268" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">Reclaim-path kprobes,</text>
-<text x="974" y="288" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">scan policy modes and a</text>
-<text x="974" y="308" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8fa3bf" font-weight="400">generation side table.</text>
-<rect x="64" y="424" width="1152" height="34" rx="10" fill="#0b1424" stroke="#1e2b45" stroke-width="1"/>
-<text x="84" y="446" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#c9d7ea" font-weight="400">Reference-profile binaries only (RMX3709 5.10.236). Never install a foreign .ko — rebuild for your own kernel.</text>
+<rect x="64" y="170" width="216" height="250" rx="16" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
+<rect x="64" y="170" width="216" height="4" rx="2" fill="#34d399"/>
+<text x="80" y="206" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="15" fill="#e8eefb" font-weight="700">kbootstrap</text>
+<text x="80" y="226" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11.5" fill="#34d399" font-weight="600">v1.0.0</text>
+<rect x="80" y="236" width="84" height="19" rx="9.5" fill="#34d399" fill-opacity="0.12" stroke="#34d399" stroke-opacity="0.45"/>
+<text x="88" y="248.92" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="9.5" fill="#34d399" font-weight="600">stable probe</text>
+<text x="80" y="284" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" fill="#8fa3bf" font-weight="400">CFI bridge, kallsyms</text>
+<text x="80" y="302" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" fill="#8fa3bf" font-weight="400">resolution, raw payload,</text>
+<text x="80" y="320" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" fill="#8fa3bf" font-weight="400">/proc surface.</text>
+<rect x="298" y="170" width="216" height="250" rx="16" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
+<rect x="298" y="170" width="216" height="4" rx="2" fill="#34d399"/>
+<text x="314" y="206" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="15" fill="#e8eefb" font-weight="700">kpatch</text>
+<text x="314" y="226" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11.5" fill="#34d399" font-weight="600">v1.0.2</text>
+<rect x="314" y="236" width="44" height="19" rx="9.5" fill="#34d399" fill-opacity="0.12" stroke="#34d399" stroke-opacity="0.45"/>
+<text x="322" y="248.92" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="9.5" fill="#34d399" font-weight="600">probe</text>
+<text x="314" y="284" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" fill="#8fa3bf" font-weight="400">Save, patch, verify,</text>
+<text x="314" y="302" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" fill="#8fa3bf" font-weight="400">restore a syscall body.</text>
+<rect x="532" y="170" width="216" height="250" rx="16" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
+<rect x="532" y="170" width="216" height="4" rx="2" fill="#fbbf24"/>
+<text x="548" y="206" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="15" fill="#e8eefb" font-weight="700">ktramp</text>
+<text x="548" y="226" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11.5" fill="#fbbf24" font-weight="600">v1.3.0</text>
+<rect x="548" y="236" width="84" height="19" rx="9.5" fill="#fbbf24" fill-opacity="0.12" stroke="#fbbf24" stroke-opacity="0.45"/>
+<text x="556" y="248.92" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="9.5" fill="#fbbf24" font-weight="600">experimental</text>
+<text x="548" y="284" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" fill="#8fa3bf" font-weight="400">Copied-prologue</text>
+<text x="548" y="302" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" fill="#8fa3bf" font-weight="400">trampoline + policy</text>
+<text x="548" y="320" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" fill="#8fa3bf" font-weight="400">at get_scan_count.</text>
+<rect x="766" y="170" width="216" height="250" rx="16" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
+<rect x="766" y="170" width="216" height="4" rx="2" fill="#fbbf24"/>
+<text x="782" y="206" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="15" fill="#e8eefb" font-weight="700">mglru_probe</text>
+<text x="782" y="226" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11.5" fill="#fbbf24" font-weight="600">v1.0.6</text>
+<rect x="782" y="236" width="84" height="19" rx="9.5" fill="#fbbf24" fill-opacity="0.12" stroke="#fbbf24" stroke-opacity="0.45"/>
+<text x="790" y="248.92" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="9.5" fill="#fbbf24" font-weight="600">experimental</text>
+<text x="782" y="284" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" fill="#8fa3bf" font-weight="400">Reclaim kprobes,</text>
+<text x="782" y="302" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" fill="#8fa3bf" font-weight="400">priority policy (0x2b),</text>
+<text x="782" y="320" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" fill="#8fa3bf" font-weight="400">clean rmmod.</text>
+<rect x="1000" y="170" width="216" height="250" rx="16" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
+<rect x="1000" y="170" width="216" height="4" rx="2" fill="#fbbf24"/>
+<text x="1016" y="206" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="15" fill="#e8eefb" font-weight="700">vmscan_hook</text>
+<text x="1016" y="226" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="11.5" fill="#fbbf24" font-weight="600">v1.0.0</text>
+<rect x="1016" y="236" width="84" height="19" rx="9.5" fill="#fbbf24" fill-opacity="0.12" stroke="#fbbf24" stroke-opacity="0.45"/>
+<text x="1024" y="248.92" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="9.5" fill="#fbbf24" font-weight="600">experimental</text>
+<text x="1016" y="284" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" fill="#8fa3bf" font-weight="400">Custom shrink_lruvec</text>
+<text x="1016" y="302" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" fill="#8fa3bf" font-weight="400">via text patch; kernel</text>
+<text x="1016" y="320" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" fill="#8fa3bf" font-weight="400">list scanners.</text>
+<rect x="64" y="444" width="1152" height="34" rx="10" fill="#0b1424" stroke="#1e2b45" stroke-width="1"/>
+<text x="84" y="466" font-family="'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" fill="#c9d7ea" font-weight="400">Reference-profile binaries only (RMX3709 5.10.236). Never install a foreign .ko — rebuild for your own kernel.</text>
 </svg>

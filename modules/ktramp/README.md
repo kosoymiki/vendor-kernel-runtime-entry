@@ -39,26 +39,28 @@ ext4 file through `loop0`, 345 MiB anonymous pressure, poll `pgscan_file`.
 
 ```
 === KTRAMP cold ===
-ktramp ... patched=1 policy=1 nr_calls=125 seq=125 win=2
-branch=0,0,0,2,0,0,123   yc=0/578   pre20=608 delta20=2
+ktramp ... patched=1 policy=1 nr_calls=123 seq=123 ttl=2
+branch=0,0,1,1,0,0,121,0,0   yc=0/415   pre20=610 delta20=1
 PASS cold: policy=1 nr_calls>0 branch6/7 (0/106)
-PASS y80: branch6=133 delta20=591 pre20=1167 (>=40%)
-PASS t5: branch1=25 delta20=8703 pre20=8703 (100%)
-PASS ref: branch2=141 tdist=847
+PASS y80: branch6=138 delta20=376 pre20=737 (>=40%)
+PASS t5: branch1=38 delta20=3070 pre20=3070 (100%)
+PASS a80: branch8=59 (old evictions -> full scan)
+PASS a10: branch9=136 delta20=375 pre20=734 (>=40%)
+PASS ref: branch2=118 tdist=848
 PASS restore: patched=0 rmmod_rc=0 proc_gone=1 module_gone=1
 PASS ktramp Stage E gate
 ```
 
 Artifact: `ktramp.ko`, sha256
-`34bf93d01b2a37b88509f7cdeb316a245c705afc6de0cfe92d48fb6be2f21100`.
+`e688ddc30758321a8bc6fb5110529c13af8ee8adc363d70829cef064007fddc2`.
 
 The wrapper is entered by genuine reclaim; the Stage E policy then makes a
 generation-tier decision: cold pages get the full scan (branch 7), a young
 working set is protected (branch 6, 51.1% suppression under `y80`), a small
 refault distance zeroes file scans (branch 1, 100% under `t5`), and a real
-refault halves them (branch 2, `tdist=847`). Stage F adds a per-memcg
-scan-epoch clock (`seq`, `window=min(seq,2)`) and scales the refault threshold
-by the window. Restore and unload are proven in the same gate.
+refault halves them (branch 2, `tdist=848`). Stage G adds adaptive ttl
+(`ttl=2..4`) and the eviction-age branches 8/9 (`a80`/`a10`). Restore and
+unload are proven in the same gate.
 
 ## What this proves, and what it does not
 

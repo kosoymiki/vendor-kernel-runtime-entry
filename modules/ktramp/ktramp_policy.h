@@ -81,6 +81,22 @@ static inline unsigned long kt_refault_distance(unsigned long nonres,
 	return (nonres - eviction) & KT_EVICTION_MASK;
 }
 
+/* Adaptive min_ttl analogue: raise the window when refaults dominate
+ * evictions (thrashing), lower it when they do not. Range [2,4]. */
+static inline unsigned long kt_ttl_step(unsigned long ev, unsigned long rf,
+					unsigned long ttl)
+{
+	unsigned long thrash = ev ? (rf * 100 / ev) : 0;
+
+	if (!ttl)
+		ttl = 2;
+	if (thrash > 50 && ttl < 4)
+		ttl++;
+	else if (thrash < 10 && ttl > 2)
+		ttl--;
+	return ttl;
+}
+
 /* Refault distance bucket: 0 = no entry, 1 = 1..32, 2 = 33..256, 3 = >256. */
 static inline int kt_dist_bucket(unsigned long dist)
 {
@@ -112,6 +128,7 @@ static inline int kt_dist_bucket(unsigned long dist)
 static inline void kt_policy_nr(unsigned long *n, unsigned long d,
 				unsigned long d_small, int gen,
 				int swap, unsigned long young, unsigned long cold,
+				unsigned long age_old, unsigned long age_all,
 				int *branch)
 {
 	if (d) {
@@ -132,6 +149,14 @@ static inline void kt_policy_nr(unsigned long *n, unsigned long d,
 	} else if (young + cold > 0 && young * 100 / (young + cold) < 20) {
 		/* Cold pages dominate: keep full scan (evict oldest first). */
 		*branch = 7;
+	} else if (age_all > 0 && age_old * 100 / age_all > 70) {
+		/* Evictions are old pages: full scan. */
+		*branch = 8;
+	} else if (age_all > 0 && age_old * 100 / age_all < 30) {
+		/* Evictions are young pages: protect the working set. */
+		n[2] /= 2;
+		n[3] /= 2;
+		*branch = 9;
 	} else if (gen) {
 		n[0] = 0;
 		n[1] = 0;

@@ -66,7 +66,7 @@ entry/payload bus. **CVE point-fixes вне области.**
 
 | id | фича | источник 7.4 | цель 5.10 | механизм | tier | статус |
 |---|---|---|---|---|---|---|
-| F-001 | MGLRU | `mm/vmscan.c` (`lru_gen*`, 216 ссылок), `mm/workingset.c`, `Documentation/admin-guide/mm/multigen_lru.rst` | `mm/vmscan.c`, `mm/workingset.c`, поля lruvec/page | A: kprobe-наблюдаемость; B: policy-хуки; C: трамплины; side table для поколений | T1 | **Stage F — M4 subset (`ktramp` 1.2.0)** |
+| F-001 | MGLRU | `mm/vmscan.c` (`lru_gen*`, 216 ссылок), `mm/workingset.c`, `Documentation/admin-guide/mm/multigen_lru.rst` | `mm/vmscan.c`, `mm/workingset.c`, поля lruvec/page | A: kprobe-наблюдаемость; B: policy-хуки; C: трамплины; side table для поколений | T1 | **Stage G — M5 runtime (`ktramp` 1.3.0, `vmscan_hook` 1.0.0)** |
 | F-002 | VMA rework | `mm/vma.c` (3,715 L), `mm/mmap.c` | `mm/mmap.c`, `mm/memory.c` | source/трамплины; высокий риск | T1 | inventory |
 | F-003 | DAMON | `mm/damon/core.c` (4,311 L) | `CONFIG_DAMON=y`, `DAMON_PADDR=y`, `DAMON_RECLAIM=y`; нет `DAMON_SYSFS` | native, не административен; backport не нужен | T1 | **native (наблюдено)** |
 | F-004 | alloc_tag | `mm/alloc_tag.c` (1,367 L) | `mm/` | source/module; page_ext | T1 | inventory |
@@ -107,8 +107,12 @@ vendor-tracepoint (`seq`, `window=min(seq,2)`) и масштабирует по�
 окном (`32*window`); наблюдалось `seq` 25→141, `win=2`, cold branch 7,
 `y80` 50.64%, `t5` 100%, refault branch 2 (`tdist=847`).
 
-Что остаётся для M5: адаптивный `min_ttl`, per-generation LRU-списки и
-folio-пути. Они делаются через side table плюс хуки
+Stage G (M5) добавляет адаптивный ttl (2..4 из thrash), 4-bucket гистограмму
+возраста вытеснений с ветками 8/9 и `vmscan_hook` — замену `shrink_lruvec`
+модулем, которая вызывает штатные сканеры списков (`calls=34`, `scans=8209`,
+`pgscan=8196`, restore/unload чистые). Оставшийся gap точности
+(per-generation списки, folio-пути, точный `min_ttl_ms`) — в
+[`MGLRU-PARITY.ru.md`](MGLRU-PARITY.ru.md). Они делаются через side table плюс хуки
 `kpatch`/`ktramp`/kprobe на reclaim path — без пересборки vmscan. Слой
 совместимости (CFI, MODVERSIONS, vermagic, reloc init/exit, SMP-safe патчинг) —
 и есть смысл `kbootstrap` + `kpatch` + `ktramp`. Gap-list ниже — про точность

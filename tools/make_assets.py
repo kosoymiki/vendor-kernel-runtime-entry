@@ -401,34 +401,35 @@ def evidence() -> None:
 
 # --- library --------------------------------------------------------------
 def library() -> None:
-    s = S(1280, 480, "Module library",
+    s = S(1280, 520, "Module library",
           "Versioned modules shipped by this repository.")
     s.bg()
     s.txt(64, 62, "MODULE LIBRARY", 12, CYAN, "700", spacing="3")
-    s.txt(64, 100, "Four modules, one entry, growing", 28, TEXT, "800")
+    s.txt(64, 100, "Five modules, one entry, growing", 28, TEXT, "800")
     s.txt(64, 128, "Every module is built from this tree by tools/adapt_kernel.sh and gated in QEMU.", 13, MUTED)
 
     bodies = {
-        "kbootstrap": "CFI bridge, kallsyms\nresolution, raw payload\nexecution, /proc surface.",
-        "kpatch": "Live text patch with\nsave + verify + restore\nof a syscall body.",
-        "ktramp": "Copied-prologue\ntrampoline replaces a\nwhole function body.",
-        "mglru_probe": "Reclaim-path kprobes,\nscan policy modes and a\ngeneration side table.",
+        "kbootstrap": "CFI bridge, kallsyms\nresolution, raw payload,\n/proc surface.",
+        "kpatch": "Save, patch, verify,\nrestore a syscall body.",
+        "ktramp": "Copied-prologue\ntrampoline + policy\nat get_scan_count.",
+        "mglru_probe": "Reclaim kprobes,\npriority policy (0x2b),\nclean rmmod.",
+        "vmscan_hook": "Custom shrink_lruvec\nvia text patch; kernel\nlist scanners.",
     }
     colors = {"stable probe": GREEN, "probe": GREEN, "experimental": AMBER}
     mods = [(m["name"], "v" + m["version"], colors.get(m["status"], DIM), m["status"],
              bodies[m["name"]]) for m in META["modules"]]
     for i, (name, ver, color, state, body) in enumerate(mods):
-        x = 64 + i * 296
-        s.rect(x, 170, 272, 230, 16, fill="url(#cardg)")
-        s.parts.append(f'<rect x="{x}" y="170" width="272" height="4" rx="2" fill="{color}"/>')
-        s.txt(x + 22, 210, name, 17, TEXT, "700", mono=True)
-        s.txt(x + 22, 232, ver, 11.5, color, "600", mono=True)
-        s.pill(x + 150, 214, state, color, size=9.5, h=19, pad=8)
+        x = 64 + i * 234
+        s.rect(x, 170, 216, 250, 16, fill="url(#cardg)")
+        s.parts.append(f'<rect x="{x}" y="170" width="216" height="4" rx="2" fill="{color}"/>')
+        s.txt(x + 16, 206, name, 15, TEXT, "700", mono=True)
+        s.txt(x + 16, 226, ver, 11.5, color, "600", mono=True)
+        s.pill(x + 16, 236, state, color, size=9.5, h=19, pad=8)
         for j, ln in enumerate(body.split("\n")):
-            s.txt(x + 22, 268 + j * 20, ln, 11.5, MUTED)
+            s.txt(x + 16, 284 + j * 18, ln, 10.5, MUTED)
 
-    s.rect(64, 424, 1152, 34, 10, fill="#0b1424", stroke="#1e2b45")
-    s.txt(84, 446, "Reference-profile binaries only (RMX3709 5.10.236). Never install a foreign .ko — "
+    s.rect(64, 444, 1152, 34, 10, fill="#0b1424", stroke="#1e2b45")
+    s.txt(84, 466, "Reference-profile binaries only (RMX3709 5.10.236). Never install a foreign .ko — "
                    "rebuild for your own kernel.", 11.5, "#c9d7ea")
     s.save("library.svg")
 
@@ -439,7 +440,7 @@ CHECKS = [
     ("entry-matrix.svg", 1280, 780),
     ("roadmap.svg", 1280, 460),
     ("evidence.svg", 1280, 520),
-    ("library.svg", 1280, 480),
+    ("library.svg", 1280, 520),
 ]
 
 

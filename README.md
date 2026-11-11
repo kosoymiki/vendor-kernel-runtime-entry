@@ -139,8 +139,9 @@ Full detail, including what text patching does *not* prove: [`docs/ENTRYPOINTS.m
 |---|---|---|---|---|
 | [`kbootstrap`](kernel/) | 1.0.0 | stable probe | CFI bridge, kallsyms resolution, raw payload, `/proc` control | `payload_result=42` · `065f520b…` |
 | [`kpatch`](modules/kpatch/) | 1.0.2 | probe | save → `aarch64_insn_patch_text_nosync` → verify → restore of a syscall | `getpid 114 → 0 → 118` · `c4f9a319…` |
-| [`ktramp`](modules/ktramp/) | 1.2.0 | experimental | Stage F M4 subset: per-memcg scan-epoch clock (`seq`/`win`), young/cold, window-scaled refault distance | `seq=125`, `win=2`, branch 7 cold, `y80` 50.6%, `t5` 100%, `tdist=847` · `34bf93d0…` |
-| [`mglru_probe`](modules/mglru/) | 1.0.5 | experimental | reclaim-path kprobes + `shrink_node` priority policy, clean rmmod | `changed=55/84`, `gt0=55` · `9a142d8b…` |
+| [`ktramp`](modules/ktramp/) | 1.3.0 | experimental | Stage G M5: adaptive ttl 2..4, eviction-age branches 8/9, scan-epoch clock | branch 8 `a80`, branch 9 `a10` 51.1%, `y80` 51.0%, `t5` 100%, `tdist=848` · `e688ddc3…` |
+| [`mglru_probe`](modules/mglru/) | 1.0.6 | experimental | reclaim-path kprobes + real `scan_control.priority` policy (0x2b), clean rmmod | `changed=11/11`, `gt0=11`, `pgscan=6071/2464` · `754d20b9…` |
+| [`vmscan_hook`](modules/vmscan_hook/) | 1.0.0 | experimental | custom `shrink_lruvec` injected by module text patch; kernel list scanners | `calls=34`, `scans=8209`, `pgscan=8196`, restore/unload · `3fb1610c…` |
 
 The library is the point of the project: each module is built from this tree by
 one builder, gated in QEMU, and shipped with its evidence. New backports
@@ -208,8 +209,9 @@ modes.
 |---|---|---|
 | `kbootstrap.ko` | `065f520b1b562f55eef48a138a12d4df3c18d51357bcbacb39b46d1e9a33c593` | `tests/qemu_payload_gate.sh` |
 | `kpatch.ko` | `c4f9a319feb6da9d8989bbdb15903bcb6ccce4c361c1fcd1edfc237dfe5ddf11` | `tests/qemu_probe_gate.sh` |
-| `ktramp.ko` | `34bf93d01b2a37b88509f7cdeb316a245c705afc6de0cfe92d48fb6be2f21100` | `tests/qemu_ktramp_gate.sh` |
-| `mglru_probe.ko` | `9a142d8b04c03a343839d38a935ad84c06f8e6e76f629d4d39fbf8a11dd53d35` | `tests/qemu_mglru_gate.sh` |
+| `ktramp.ko` | `e688ddc30758321a8bc6fb5110529c13af8ee8adc363d70829cef064007fddc2` | `tests/qemu_ktramp_gate.sh` |
+| `mglru_probe.ko` | `754d20b990bcd022e8766cbe79676eec847dcdfe50e05f99af660dcddf940ea4` | `tests/qemu_mglru_gate.sh` |
+| `vmscan_hook.ko` | `3fb1610cc191b1b5b840aac4140a9c021ac4174d6d5f4eb1f45e5f3c1f7371c9` | `tests/qemu_vmscan_hook_gate.sh` |
 
 Measured on QEMU with the exact stock `Image` (`-smp 1`, `maxcpus=1`):
 
@@ -218,12 +220,14 @@ Measured on QEMU with the exact stock `Image` (`-smp 1`, `maxcpus=1`):
   `init_module+0x1c/0xfe8 [kbootstrap]` in the trace — `init_module` really ran.
 - **text patch:** `__arm64_sys_getpid` saved, patched to `mov w0,#0; ret`,
   returned `0`, restored, returned `118`.
-- **trampoline (Stage F):** `get_scan_count` entry replaced with a branch into
-  the module wrapper; per-memcg scan-epoch clock `seq=125`, `win=2`; cold cache
-  takes branch 7 (full scan), forced young `y80` takes branch 6
-  (`delta20=591/1167` = 50.6%), forced distance `t5` takes branch 1 (100%),
-  real refault takes branch 2 (`tdist=847`); `patched=0`, `rmmod_rc=0`,
-  `proc_gone`, `module_gone`.
+- **trampoline (Stage G):** `get_scan_count` entry replaced with a branch into
+  the module wrapper; scan-epoch clock `seq=123`, `ttl=2`; cold cache takes
+  branch 7 (full scan), forced young `y80` branch 6 (51.0%), forced distance
+  `t5` branch 1 (100%), forced old/young evictions branches 8/9 (51.1%),
+  real refault branch 2 (`tdist=848`); restore and unload clean.
+- **custom vmscan:** `vmscan_hook` replaces `shrink_lruvec` with a module
+  function that calls the kernel's `shrink_active_list`/`shrink_inactive_list`;
+  `calls=34`, `scans=8209`, `pgscan_file=8196`, restore + unload clean.
 - **reclaim probes:** baseline `get_scan_count=54`, `pgscan_file=1428`; mode 5
   `get_scan_count=84`, `pgscan_file=4478`, `changed=55/phits=84`
   (`gt0=55`, `zero=84`). Cumulative totals are not comparable across runs — the
@@ -247,7 +251,7 @@ documented in [`docs/MEASURING-RECLAIM.md`](docs/MEASURING-RECLAIM.md).
 | M2 trampoline | **done** | whole-function replacement |
 | M3 policy hooks | **done** | Stage E generation-tier policy, shadow refault distance, SMP-safe patching, restore/unload |
 | M4 7.4 backport | **done** | Stage F: per-memcg scan-epoch clock (`seq`/`win`), window-scaled refault threshold, young/cold by epoch |
-| M5 parity | next | adaptive `min_ttl`, per-generation LRU lists, folio paths, fidelity gap report |
+| M5 parity | **done** | adaptive ttl, eviction-age branches, custom `shrink_lruvec` entry, fidelity gap report |
 
 A probe is not a backport. M3/M4 landed with QEMU behaviour evidence and an
 explicit gap list; the 5.10 → 7.4 delta is measured in
@@ -264,6 +268,7 @@ explicit gap list; the 5.10 → 7.4 delta is measured in
 | [v1.0.4](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.0.4) | `mglru_probe` mode 5 priority policy, A/B reclaim gate, measured stage numbers |
 | [v1.1.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.1.0) | MGLRU Stage E: generation-tier young/cold policy, shadow refault distance, `delta/pre` gate, restore/unload, `mglru_probe` 1.0.5 |
 | [v1.2.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.2.0) | MGLRU Stage F (M4 subset): per-memcg scan-epoch clock `seq`/`win`, window-scaled refault threshold, 31/31 unit tests |
+| [v1.3.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.3.0) | MGLRU Stage G (M5): adaptive ttl, eviction-age branches 8/9, `vmscan_hook` custom `shrink_lruvec`, parity report, 38/38 unit tests |
 
 ## Documentation
 

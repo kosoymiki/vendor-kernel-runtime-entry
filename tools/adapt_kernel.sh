@@ -73,6 +73,9 @@ KB_IMAGE="$KERNEL_IMAGE" KB_KALLSYMS="$KALLSYMS" KB_VERMAGIC="$VERMAGIC" \
 KB_INIT_OFF="$INIT_OFF" KB_EXIT_OFF="$EXIT_OFF" KB_MODVERSIONS="$KB_MODVERSIONS" \
 KB_THIS_MODULE_SIZE="$KB_THIS_MODULE_SIZE" \
 sh "$ROOT/tools/postprocess_common.sh" "$KO" "$MODNAME" "$VERMAGIC"
+# postprocess can add symbols/sections; re-run the SHN_XINDEX fix so the
+# loader never sees a symtab entry without SYMTAB_SHNDX (load_module Oops).
+python3 "$ROOT/tools/fix_symtab_shndx.py" "$KO"
 DIST=${KB_DIST:-$ROOT/dist}/$(basename "$KERNEL_OUT")-$MODNAME; mkdir -p "$DIST"
 cp -f "$KO" "$DIST/$MODNAME.ko"; cp -a "$ROOT/module/." "$DIST/module/"; mkdir -p "$DIST/module/bin"
 cp -f "$KO" "$DIST/module/bin/$MODNAME.ko"; ( cd "$DIST/module" && zip -qr ../module.zip . )

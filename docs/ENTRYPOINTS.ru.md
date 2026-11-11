@@ -60,11 +60,12 @@ CFI-проверки **для этого модуля**; это не глоба�
 `nr[]`.
 
 Измерено под **реальным reclaim** (ext4-файл через `loop0` + 345 MiB анонимного
-давления, см. `docs/MEASURING-RECLAIM.md`), гейт Stage F: холодный кэш
-`seq=125`, `win=2`, ветка 7 (123 решения полного скана); форс young `y80` —
-ветка 6, `delta20=591/1167` = 50.6%; форс distance `t5` — ветка 1, 100%;
-реальный refault — ветка 2, `tdist=847`; затем `patched=0`, `rmmod_rc=0`,
-`proc_gone`, `module_gone`.
+давления, см. `docs/MEASURING-RECLAIM.md`), гейт Stage G: холодный кэш
+`seq=123`, `ttl=2`, ветка 7 (121 решение полного скана); форс young `y80` —
+ветка 6, 51.0%; форс distance `t5` — ветка 1, 100%; форс старых/молодых
+вытеснений — ветки 8/9 (51.1%); реальный refault — ветка 2, `tdist=848`;
+затем `patched=0`, `rmmod_rc=0`, `proc_gone`, `module_gone`. `vmscan_hook`
+добавляет кастомный `shrink_lruvec` (`calls=34`, `scans=8209`, `pgscan=8196`).
 
 Границы:
 
@@ -86,6 +87,7 @@ CFI-проверки **для этого модуля**; это не глоба�
 | `kbootstrap` | vendor CFI runtime, резолв kallsyms, vermagic/MODVERSIONS, reloc init/exit `this_module` |
 | `kpatch` | замена тела любой достижимой функции, проверка, restore; SMP через `aarch64_insn_patch_text` |
 | `ktramp` | трамплин целой функции с вызовом оригинала и policy-хуком на `nr[]` |
+| `vmscan_hook` | заменяет `shrink_lruvec` функцией модуля, вызывающей штатные сканеры списков (кастомный reclaim path) |
 
 Точки входа vmscan достижимы без пересборки: kprobes наблюдают `shrink_node`,
 `shrink_node_memcgs`, `get_scan_count`, `page_referenced`, `shrink_slab`,

@@ -119,12 +119,23 @@ t_ok=0
 if [ "${t_b1:-0}" -gt 0 ] && [ "${t_pre:-0}" -gt 0 ] && [ "$t_delta" = "$t_pre" ]; then t_ok=1; fi
 check "$t_ok" "t5: branch1=$t_b1 delta20=$t_delta pre20=$t_pre (100%)"
 
-# 4. real refault (MADV_PAGEOUT of 128 KiB): branch 2.
-run_one ref 2 1
-r_b2=$(branch ref 2); r_td=$(field ref tdist)
-check "$([ "${r_b2:-0}" -gt 0 ] && echo 1 || echo 0)" "ref: branch2=$r_b2 tdist=$r_td"
+# 4. forced eviction-age split: old -> full scan, young -> protect.
+run_one a80 a80 0
+a8=$(branch a80 8)
+check "$([ "${a8:-0}" -gt 0 ] && echo 1 || echo 0)" "a80: branch8=$a8 (old evictions -> full scan)"
+run_one a10 a10 0
+a9=$(branch a10 9); a_pre=$(field a10 pre20); a_delta=$(field a10 delta20)
+a_ok=0
+if [ "${a9:-0}" -gt 0 ] && [ "${a_pre:-0}" -gt 0 ] && [ $((a_delta * 100)) -ge $((a_pre * 40)) ]; then a_ok=1; fi
+check "$a_ok" "a10: branch9=$a9 delta20=$a_delta pre20=$a_pre (>=40%)"
 
-# 5. restore + unload.
+# 5. real refault (MADV_PAGEOUT of 128 KiB): branch 2.
+run_one ref 2 1
+r_b2=$(branch ref 2); r_td=$(field ref tdist); r_ttl=$(field ref ttl); r_age=$(field ref age)
+check "$([ "${r_b2:-0}" -gt 0 ] && [ -n "$r_ttl" ] && [ -n "$r_age" ] && echo 1 || echo 0)" \
+      "ref: branch2=$r_b2 tdist=$r_td ttl=$r_ttl age=$r_age"
+
+# 6. restore + unload.
 run_one restore 1 0
 r_patched=$(sed -n 's/.*patched=\([0-9]*\).*/\1/p' "$TMP/counters-restore.txt" | tail -1)
 r_rmmod=$(field restore rmmod_rc)
