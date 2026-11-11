@@ -272,6 +272,7 @@ QEMU и явным списком пробелов; дельта 5.10 → 7.4 и
 | [v1.1.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.1.0) | MGLRU Stage E: поколенческая young/cold-политика, shadow refault distance, `delta/pre`-гейт, restore/unload, `mglru_probe` 1.0.5 |
 | [v1.2.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.2.0) | MGLRU Stage F (M4 subset): per-memcg часы scan-эпох `seq`/`win`, порог refault по окну, 31/31 unit-тестов |
 | [v1.3.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.3.0) | MGLRU Stage G (M5): адаптивный ttl, ветки возраста 8/9, `vmscan_hook` кастомный `shrink_lruvec`, parity-report, 38/38 unit-тестов |
+| [v1.4.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.4.0) | stack-гейт: политика `ktramp` + кастомный `shrink_lruvec` `vmscan_hook` компонуются под реальным reclaim (`calls=112`, `scans=8579`, `pgscan=8210`), restore/unload чистые |
 
 ## Документация
 

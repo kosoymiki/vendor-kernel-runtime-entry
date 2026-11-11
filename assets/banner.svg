@@ -49,7 +49,7 @@
 <rect x="503.2" y="316" width="67" height="24" rx="12.0" fill="#34d399" fill-opacity="0.12" stroke="#34d399" stroke-opacity="0.45"/>
 <text x="515.2" y="332.32" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="12" fill="#34d399" font-weight="600">procfs</text>
 <rect x="72" y="352" width="92" height="26" rx="13" fill="none" stroke="#a78bfa" stroke-width="1.2"/>
-<text x="118" y="370" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="12" fill="#a78bfa" font-weight="700" text-anchor="middle">v1.3.0</text>
+<text x="118" y="370" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="12" fill="#a78bfa" font-weight="700" text-anchor="middle">v1.4.0</text>
 <rect x="880" y="62" width="330" height="52" rx="12" fill="url(#cardg)" stroke="#22314e" stroke-width="1"/>
 <rect x="880" y="62" width="4" height="52" rx="2" fill="#34d399" opacity="0.9"/>
 <text x="900" y="85" font-family="'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace" font-size="15" fill="#e8eefb" font-weight="700">kbootstrap</text>

@@ -1,8 +1,8 @@
 {
   "_comment": "Single source of truth for release and module metadata. tools/make_assets.py renders it into the SVGs; tools/check_versions.py enforces that nothing drifts. Bump here first, then run the checklist in docs/RELEASE.md.",
   "release": {
-    "version": "1.3.0",
-    "versionCode": 8,
+    "version": "1.4.0",
+    "versionCode": 9,
     "date": "2026-11-11"
   },
   "modules": [
@@ -124,6 +124,19 @@
         "module_gone": true
       },
       "log": "$PREFIX/tmp/vmscan-hook.*/serial.log"
+    },
+    "vmscan_stack": {
+      "ktramp_calls": 112,
+      "policy_applied": 112,
+      "sum20": 302,
+      "delta20": 2,
+      "seq": 112,
+      "ttl": 2,
+      "vmscan_calls": 112,
+      "scans": 8579,
+      "pgscan_file": 8210,
+      "gate": "tests/qemu_vmscan_stack_gate.sh",
+      "log": "$PREFIX/tmp/vmscan-stack.*/serial.log"
     }
   }
 }

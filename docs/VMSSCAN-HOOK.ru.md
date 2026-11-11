@@ -59,6 +59,21 @@ module_gone
 8209 страниц штатными сканерами списков, reclaim path остался жив
 (`pgscan_file=8196`). Restore и unload чистые; паники нет.
 
+## Композиция с `ktramp` (stack-гейт)
+
+`vmscan_hook` и `ktramp` компонуются: `my_shrink_lruvec` вызывает
+`get_scan_count`, который пропатчен `ktramp`, поэтому скорректированные
+политикой `nr[]` управляют кастомным циклом. `tests/qemu_vmscan_stack_gate.sh`
+загружает оба, патчит оба и запускает реальный reclaim:
+
+```
+poll=14 pgscan=8210
+ktramp ... policy=1 calls=112 policy_applied=112 sum20=302 delta20=2 seq=112 ttl=2
+vmscan_hook ... hooked=1 calls=112 scans=8579
+vh_off=0 kt_off=0 vh_rm=0 kt_rm=0 vh_gone kt_gone vh_mod_gone kt_mod_gone
+PASS vmscan stack gate
+```
+
 ## Ограничения (честно)
 
 - Цикл намеренно упрощён: нет пропорциональной балансировки anon/file,

@@ -269,6 +269,7 @@ explicit gap list; the 5.10 → 7.4 delta is measured in
 | [v1.1.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.1.0) | MGLRU Stage E: generation-tier young/cold policy, shadow refault distance, `delta/pre` gate, restore/unload, `mglru_probe` 1.0.5 |
 | [v1.2.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.2.0) | MGLRU Stage F (M4 subset): per-memcg scan-epoch clock `seq`/`win`, window-scaled refault threshold, 31/31 unit tests |
 | [v1.3.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.3.0) | MGLRU Stage G (M5): adaptive ttl, eviction-age branches 8/9, `vmscan_hook` custom `shrink_lruvec`, parity report, 38/38 unit tests |
+| [v1.4.0](https://github.com/kosoymiki/vendor-kernel-runtime-entry/releases/tag/v1.4.0) | stack gate: `ktramp` policy + `vmscan_hook` custom `shrink_lruvec` compose under real reclaim (`calls=112`, `scans=8579`, `pgscan=8210`), restore/unload clean |
 
 ## Documentation
 

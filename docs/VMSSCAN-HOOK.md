@@ -59,6 +59,21 @@ The custom function ran 34 times under real reclaim, scanned 8209 pages with
 the kernel's own list scanners, and the reclaim path stayed alive
 (`pgscan_file=8196`). Restore and unload are clean; no panic.
 
+## Composition with `ktramp` (stack gate)
+
+`vmscan_hook` and `ktramp` compose: `my_shrink_lruvec` calls `get_scan_count`,
+which is patched by `ktramp`, so the policy-adjusted `nr[]` drives the custom
+loop. `tests/qemu_vmscan_stack_gate.sh` loads both, patches both, and runs real
+reclaim:
+
+```
+poll=14 pgscan=8210
+ktramp ... policy=1 calls=112 policy_applied=112 sum20=302 delta20=2 seq=112 ttl=2
+vmscan_hook ... hooked=1 calls=112 scans=8579
+vh_off=0 kt_off=0 vh_rm=0 kt_rm=0 vh_gone kt_gone vh_mod_gone kt_mod_gone
+PASS vmscan stack gate
+```
+
 ## Limits (honest)
 
 - The loop is intentionally simplified: it does not replicate vmscan's
